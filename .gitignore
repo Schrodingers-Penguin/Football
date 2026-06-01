@@ -1,0 +1,29 @@
+# Secrets
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+.mypy_cache/
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+
+# macOS
+.DS_Store
+
+# Playwright
+/test-results/
+/playwright-report/

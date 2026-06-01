@@ -80,6 +80,13 @@ This file governs how you (Claude Code) execute against the spec.
     └── ...
 ```
 
+## Supabase access pattern
+
+- All Supabase calls happen server-side only — Next.js server components, API routes, or server actions — using the service role key loaded from environment variables.
+- Never use the Supabase anon key.
+- Never import or use `supabase-js` in a client component (`'use client'`).
+- If frontend interactivity needs data, fetch it server-side and pass it as props, or expose a server action / API route.
+
 ## When something breaks later
 
 If Max comes back in months with "the scraper broke":
