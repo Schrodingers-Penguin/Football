@@ -1,11 +1,12 @@
 """Supabase client singleton — server-side use only."""
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).parents[2] / ".env.local")
 
 _client: Client | None = None
 
