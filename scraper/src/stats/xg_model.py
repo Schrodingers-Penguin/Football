@@ -1,45 +1,111 @@
-"""Fallback xG model for competitions not on Understat."""
+"""xG model: a logistic model fit offline against Understat's xG, applied at
+runtime to WhoScored shot features only.
+
+The coefficients live in the generated module ``xg_coefficients`` (produced by
+``scripts/train_production_xg.py``). At runtime nothing from Understat is touched
+— only WhoScored-derived features feed ``shot_xg``.
+
+``build_features`` is the single source of truth for the feature vector and is
+imported by BOTH the trainer and the runtime, so train/serve features cannot
+drift apart.
+"""
 
 import math
+from functools import lru_cache
+
+# canonical feature order — trainer and runtime both rely on this exact layout
+FEATURE_NAMES = [
+    "distance",
+    "distance_sq",
+    "angle",
+    "angle_sq",
+    "dist_angle",
+    "is_head",
+    "sit_corner",
+    "sit_setpiece",
+    "sit_dfk",
+    "la_throughball",
+    "la_cross",
+    "la_chipped",
+    "la_headpass",
+]
+CONTINUOUS_IDX = (0, 1, 2, 3, 4)  # geometry terms that get standardized
+
+SITUATIONS = ("open", "corner", "setpiece", "dfk")
+LAST_ACTIONS = ("pass", "throughball", "cross", "chipped", "headpass")
 
 
-def estimate_xg(x_coord: float, y_coord: float, is_head: bool, is_penalty: bool) -> float:
-    """Estimate xG for a shot from WhoScored coordinates.
+def distance_angle(x100: float, y100: float) -> tuple[float, float]:
+    """Shot distance (m) and visible-goal angle (rad) from 0-100 pitch coords.
 
-    Coordinate conversion: x_m = x_coord * 1.05, y_m = y_coord * 0.68
-    Goal center at x=100 (105m), y=50 (34m).
-    Goal posts at y≈44.8 (30.5m) and y≈55.2 (37.5m).
+    Goal centre at x=100 (105m), posts at y≈44.8 and y≈55.2 (30.5m, 37.5m).
+    Angle is symmetric in y about the centre, so y-orientation is irrelevant.
     """
-    x_m = x_coord * 1.05
-    y_m = y_coord * 0.68
+    x_m, y_m = x100 * 1.05, y100 * 0.68
+    dx = 105.0 - x_m
+    distance = math.hypot(dx, 34.0 - y_m)
+    d1 = math.hypot(dx, y_m - 30.5)
+    d2 = math.hypot(dx, y_m - 37.5)
+    cos_a = (d1 * d1 + d2 * d2 - 49.0) / (2 * d1 * d2) if d1 and d2 else 1.0
+    return distance, math.acos(max(-1.0, min(1.0, cos_a)))
 
-    goal_x_m = 105.0
-    goal_y_m = 34.0
-    post_y1_m = 30.5
-    post_y2_m = 37.5
 
-    dx = goal_x_m - x_m
-    dy = goal_y_m - y_m
-    distance = math.sqrt(dx * dx + dy * dy)
+def build_features(
+    x100: float,
+    y100: float,
+    is_head: bool,
+    situation: str = "open",
+    last_action: str = "pass",
+) -> list[float]:
+    """Feature vector for one non-penalty shot. ``situation`` ∈ SITUATIONS,
+    ``last_action`` ∈ LAST_ACTIONS."""
+    d, a = distance_angle(x100, y100)
+    return [
+        d,
+        d * d,
+        a,
+        a * a,
+        d * a,
+        1.0 if is_head else 0.0,
+        1.0 if situation == "corner" else 0.0,
+        1.0 if situation == "setpiece" else 0.0,
+        1.0 if situation == "dfk" else 0.0,
+        1.0 if last_action == "throughball" else 0.0,
+        1.0 if last_action == "cross" else 0.0,
+        1.0 if last_action == "chipped" else 0.0,
+        1.0 if last_action == "headpass" else 0.0,
+    ]
 
-    d1 = math.sqrt(dx * dx + (y_m - post_y1_m) ** 2)
-    d2 = math.sqrt(dx * dx + (y_m - post_y2_m) ** 2)
-    goal_width = abs(post_y2_m - post_y1_m)
-    cos_angle = (d1 * d1 + d2 * d2 - goal_width ** 2) / (2 * d1 * d2)
-    cos_angle = max(-1.0, min(1.0, cos_angle))
-    angle = math.acos(cos_angle)
 
-    intercept = -1.526
-    w_distance = -0.1154
-    w_angle = 1.845
-    w_head = -0.8689
-    w_penalty = 3.5
+@lru_cache(maxsize=1)
+def _coeffs():
+    from . import xg_coefficients as c
 
-    linear = (
-        intercept
-        + distance * w_distance
-        + angle * w_angle
-        + (1 if is_head else 0) * w_head
-        + (1 if is_penalty else 0) * w_penalty
-    )
-    return 1.0 / (1.0 + math.exp(-linear))
+    return c.MEANS, c.STDS, c.WEIGHTS, c.BIAS
+
+
+def apply_coefficients(features: list[float]) -> float:
+    """Apply the fitted logistic coefficients to a feature vector."""
+    means, stds, weights, bias = _coeffs()
+    z = bias
+    for j, w in enumerate(weights):
+        v = features[j]
+        if j in CONTINUOUS_IDX:
+            v = (v - means[j]) / stds[j]
+        z += w * v
+    if z < -35:
+        return 1e-15
+    if z > 35:
+        return 1 - 1e-15
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def shot_xg(
+    x100: float,
+    y100: float,
+    is_head: bool = False,
+    situation: str = "open",
+    last_action: str = "pass",
+) -> float:
+    """Non-penalty xG for a shot from WhoScored-derived features."""
+    return apply_coefficients(build_features(x100, y100, is_head, situation, last_action))

@@ -1,4 +1,6 @@
-"""Phase 3 validation: ingest Arsenal vs Fulham, print Saka's player_match_stats row."""
+"""Phase 3 validation: ingest Arsenal vs Fulham end-to-end (WhoScored only),
+print Saka's player_match_stats row. xG/xA come from the fitted model — no
+external data source."""
 
 import json
 import sys
@@ -9,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.aggregate.match import aggregate_match
 from src.parser.events import parse_events
-from src.understat.scraper import get_understat_xg
 
 MATCH_DATA_PATH = Path(__file__).parent.parent / "phase1_match_data.json"
 MATCH_ID = 1903405
@@ -22,39 +23,17 @@ def main() -> None:
     print(f"Loading {MATCH_DATA_PATH}")
     match_data = json.loads(MATCH_DATA_PATH.read_text())
 
-    raw_date = match_data.get("startDate", "")
-    match_date = datetime.fromisoformat(raw_date).strftime("%Y-%m-%d")
-    home_team = match_data["home"]["name"]
-    away_team = match_data["away"]["name"]
-
-    print(f"Match: {home_team} vs {away_team} on {match_date}")
-
-    print("Fetching Understat xG data...")
-    try:
-        xg_data = get_understat_xg(
-            competition_id=COMPETITION_ID,
-            season_label=SEASON_LABEL,
-            match_date=match_date,
-            home_team=home_team,
-            away_team=away_team,
-        )
-        if xg_data is None:
-            print("Competition not on Understat — will use fallback model")
-        else:
-            print(f"Understat xG data: {len(xg_data)} players found")
-    except Exception as exc:
-        print(f"Understat fetch failed ({exc}) — falling back to xG model")
-        xg_data = None
+    match_date = datetime.fromisoformat(match_data.get("startDate", "")).strftime("%Y-%m-%d")
+    print(f"Match: {match_data['home']['name']} vs {match_data['away']['name']} on {match_date}")
 
     print("Parsing events...")
     events = parse_events(match_data)
     print(f"  {len(events)} events parsed")
 
-    print("Aggregating match stats...")
+    print("Aggregating match stats (model xG/xA)...")
     rows = aggregate_match(
         events=events,
         match_data=match_data,
-        xg_data=xg_data,
         match_id=MATCH_ID,
         competition_id=COMPETITION_ID,
         season_label=SEASON_LABEL,
@@ -72,9 +51,8 @@ def main() -> None:
     print(f"\n{'=' * 60}")
     print(f"  {saka_name} — player_match_stats")
     print(f"{'=' * 60}")
-    col_width = 30
     for key, val in saka_row.items():
-        print(f"  {key:<{col_width}} {val}")
+        print(f"  {key:<30} {val}")
     print(f"{'=' * 60}")
 
 

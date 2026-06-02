@@ -1,6 +1,5 @@
 """Shot-Creating Action (SCA) and Goal-Creating Action (GCA) taggers."""
 
-from ._qualifiers import has_qualifier
 
 SHOT_TYPES = {"Goal", "SavedShot", "MissedShots", "ShotOnPost"}
 

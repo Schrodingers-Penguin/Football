@@ -25,6 +25,7 @@ def parse_events(match_data: dict) -> list[dict]:
         events.append(
             {
                 "id": ev.get("id"),
+                "event_id": ev.get("eventId"),
                 "minute": ev.get("minute"),
                 "second": ev.get("second", 0),
                 "expanded_minute": ev.get("expandedMinute"),
