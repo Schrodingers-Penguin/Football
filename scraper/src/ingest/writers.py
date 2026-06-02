@@ -39,6 +39,13 @@ def upsert_player_match_stats(client, rows: list[dict]) -> None:
         client.table("player_match_stats").upsert(rows, on_conflict="match_id,player_id").execute()
 
 
+def upsert_player_season_stats(client, rows: list[dict]) -> None:
+    if rows:
+        client.table("player_season_stats").upsert(
+            rows, on_conflict="season_id,player_id,position_bucket"
+        ).execute()
+
+
 def mark_ingested(client, match_id: int, raw_json_path: str) -> None:
     client.table("matches").update(
         {"raw_json_path": raw_json_path, "ingested_at": datetime.now(UTC).isoformat()}

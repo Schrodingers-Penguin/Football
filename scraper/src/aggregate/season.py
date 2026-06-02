@@ -1,6 +1,26 @@
 """Aggregate player match rows into a season row."""
 
 
+def build_player_season_rows(match_stats: list[dict], *, season_id: int) -> list[dict]:
+    """Group player_match_stats rows by player and aggregate each into a
+    player_season_stats row (season_id + player_id + aggregated stats).
+
+    Pure: no DB. One row per player (the dominant-position model in
+    `aggregate_season`); players with no position bucket are dropped.
+    """
+    by_player: dict[int, list[dict]] = {}
+    for r in match_stats:
+        by_player.setdefault(r["player_id"], []).append(r)
+
+    rows: list[dict] = []
+    for player_id, player_rows in by_player.items():
+        agg = aggregate_season(player_rows)
+        if not agg or agg.get("position_bucket") is None:
+            continue
+        rows.append({"season_id": season_id, "player_id": player_id, **agg})
+    return rows
+
+
 def aggregate_season(match_rows: list[dict]) -> dict:
     """Aggregate player_match_stats rows into a player_season_stats row.
 
