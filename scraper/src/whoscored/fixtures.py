@@ -52,14 +52,16 @@ async def discover_fixtures_async(
     competition_id: int,
     season_label: str,
     *,
-    headless: bool = False,
+    headless: bool = True,
     max_months: int = 15,
     settle: float = 4.0,
 ) -> list[Fixture]:
     found: dict[int, str] = {}
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=headless, args=["--disable-blink-features=AutomationControlled"]
+            headless=headless,
+            channel="chromium",
+            args=["--disable-blink-features=AutomationControlled"],
         )
         try:
             ctx = await browser.new_context(
@@ -106,7 +108,7 @@ def discover_fixtures(
     competition_id: int,
     season_label: str,
     *,
-    headless: bool = False,
+    headless: bool = True,
 ) -> list[Fixture]:
     """Sync wrapper around discover_fixtures_async."""
     return asyncio.run(

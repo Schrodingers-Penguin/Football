@@ -77,7 +77,7 @@ def backfill(
     *,
     client=None,
     delay_seconds: float = 30.0,
-    headless: bool = False,
+    headless: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict:
     """Production wiring: real WhoScored scraper + Supabase writers.

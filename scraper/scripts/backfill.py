@@ -40,7 +40,9 @@ def main() -> None:
     )
     ap.add_argument("--limit", type=int, default=None, help="only process the first N fixtures")
     ap.add_argument(
-        "--headless", action="store_true", help="run browser headless (more Cloudflare risk)"
+        "--headed",
+        action="store_true",
+        help="show the browser window (default: headless new-headless mode, for debugging)",
     )
     ap.add_argument(
         "--dry-run", action="store_true", help="discover + count only; no scrape/ingest"
@@ -49,7 +51,7 @@ def main() -> None:
 
     print(f"Discovering fixtures for competition {args.competition} {args.season}...")
     fixtures = discover_fixtures(
-        args.fixtures_url, args.competition, args.season, headless=args.headless
+        args.fixtures_url, args.competition, args.season, headless=not args.headed
     )
     print(f"  {len(fixtures)} fixtures discovered")
 
@@ -65,7 +67,7 @@ def main() -> None:
         print("dry run — nothing ingested")
         return
 
-    summary = backfill(fixtures, delay_seconds=args.delay, headless=args.headless)
+    summary = backfill(fixtures, delay_seconds=args.delay, headless=not args.headed)
     print(f"\n{summary}")
 
 

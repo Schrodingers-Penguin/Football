@@ -21,15 +21,19 @@ _STEALTH = Stealth(
 )
 
 
-async def scrape_match(url: str, headless: bool = False) -> dict:
+async def scrape_match(url: str, headless: bool = True) -> dict:
     """Scrape a WhoScored match page and return the matchCentreData dict.
 
-    headless=False is the default for local use — WhoScored's Cloudflare
-    detects headless Chromium more readily than headed.
+    headless=True is the default so the backfill doesn't pop Chrome windows and
+    grab focus on the Mac. We pass channel="chromium" so headless uses Chromium's
+    *new* headless mode (the full browser binary) instead of Playwright's default
+    "headless-shell", which Cloudflare fingerprints far more readily. The full
+    chromium channel is the one already installed via `playwright install`.
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=headless,
+            channel="chromium",
             args=["--disable-blink-features=AutomationControlled"],
         )
         try:
