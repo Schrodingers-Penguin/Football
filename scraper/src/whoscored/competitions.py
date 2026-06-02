@@ -13,11 +13,30 @@ it separately.
 """
 
 import asyncio
+import re
 
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
 _BASE = "https://www.whoscored.com"
+
+# Stage-name fragments that mark a NON-regular-season stage (playoffs, European
+# qualification mini-tournaments, etc.). Used to skip e.g. Eredivisie's "ECL
+# Playoff" stage and land on the 306-match regular season.
+_SIDE_STAGE_KEYWORDS = (
+    "playoff",
+    "play-off",
+    "play off",
+    "relegation",
+    "promotion",
+    "qualif",
+    "apertura",
+    "clausura",
+    "championship round",
+    "ecl",
+    "uecl",
+    "europa",
+)
 
 # competitions.id (== WhoScored tournament id) -> WhoScored region id.
 # Verified by loading https://www.whoscored.com/Regions/<r>/Tournaments/<t>/ and
@@ -57,6 +76,33 @@ def pick_season_url(options: list[dict], season_label: str) -> str | None:
 
 def _abs(href: str) -> str:
     return href if href.startswith("http") else _BASE + href
+
+
+def show_to_fixtures(url: str) -> str:
+    """A `#stages` option value points at `/Stages/<id>/Show/<slug>`; the
+    fixtures calendar for that stage lives at `/Stages/<id>/Fixtures/<slug>`."""
+    return re.sub(r"/Show/", "/Fixtures/", url, flags=re.I)
+
+
+def pick_main_stage_url(stages: list[dict]) -> str | None:
+    """From `#stages` option dicts ({'value','text'}), the regular-season
+    stage's fixtures URL.
+
+    Prefer the (single) option whose name has no playoff/qualifier keyword;
+    otherwise fall back to the first option — WhoScored lists the regular season
+    first. Returns a /Fixtures/ URL, or None if there are no stages.
+    """
+    if not stages:
+        return None
+
+    def is_side(text: str | None) -> bool:
+        t = (text or "").lower()
+        return any(k in t for k in _SIDE_STAGE_KEYWORDS)
+
+    regular = [s for s in stages if not is_side(s.get("text"))]
+    chosen = (regular or stages)[0]
+    value = chosen.get("value")
+    return show_to_fixtures(value) if value else None
 
 
 async def discover_season_fixtures_url_async(
@@ -106,7 +152,21 @@ async def discover_season_fixtures_url_async(
                 "() => { const a = document.querySelector(\"a[href*='/Fixtures/' i]\");"
                 " return a ? a.getAttribute('href') : null; }"
             )
-            return _abs(href) if href else None
+            if not href:
+                return None
+
+            # A season's first Fixtures link can point at a playoff sub-stage
+            # (e.g. Eredivisie's ECL Playoff). The fixtures page lists every
+            # stage in #stages, which only appears for multi-stage seasons; when
+            # present, switch to the regular-season stage.
+            await page.goto(_abs(href), wait_until="domcontentloaded", timeout=60_000)
+            await asyncio.sleep(settle)
+            stages = await page.evaluate(
+                "() => { const s = document.getElementById('stages');"
+                " return s ? [...s.options].map(o => ({value:o.value, text:o.text})) : []; }"
+            )
+            main = pick_main_stage_url(stages)
+            return _abs(main) if main else _abs(href)
         finally:
             await browser.close()
 

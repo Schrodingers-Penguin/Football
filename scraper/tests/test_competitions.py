@@ -2,7 +2,9 @@
 
 from src.whoscored.competitions import (
     COMPETITION_REGIONS,
+    pick_main_stage_url,
     pick_season_url,
+    show_to_fixtures,
     ws_season_text,
 )
 
@@ -30,6 +32,39 @@ def test_pick_season_url_tolerates_whitespace():
 def test_pick_season_url_missing_returns_none():
     options = [{"value": "/x/1", "text": "2019/2020"}]
     assert pick_season_url(options, "2024-2025") is None
+
+
+def test_show_to_fixtures_swaps_path_segment():
+    show = "/Regions/155/Tournaments/13/Seasons/10321/Stages/23405/Show/netherlands-eredivisie"
+    assert show_to_fixtures(show).endswith("/Stages/23405/Fixtures/netherlands-eredivisie")
+
+
+def test_pick_main_stage_skips_playoff_stage():
+    # Eredivisie: regular season + ECL playoff -> must pick the regular season.
+    stages = [
+        {"value": "/S/10321/Stages/23405/Show/eredivisie", "text": "Eredivisie"},
+        {"value": "/S/10321/Stages/24421/Show/eredivisie", "text": "Eredivisie ECL Playoff"},
+    ]
+    url = pick_main_stage_url(stages)
+    assert "/Stages/23405/Fixtures/" in url
+
+
+def test_pick_main_stage_single_stage_passthrough():
+    stages = [{"value": "/x/Stages/99/Show/league", "text": "Premier League"}]
+    assert "/Stages/99/Fixtures/" in pick_main_stage_url(stages)
+
+
+def test_pick_main_stage_all_sidelike_falls_back_to_first():
+    # If every name looks playoff-ish, don't drop everything — use the first.
+    stages = [
+        {"value": "/x/Stages/1/Show/s", "text": "Promotion Playoff"},
+        {"value": "/x/Stages/2/Show/s", "text": "Relegation Playoff"},
+    ]
+    assert "/Stages/1/Fixtures/" in pick_main_stage_url(stages)
+
+
+def test_pick_main_stage_empty():
+    assert pick_main_stage_url([]) is None
 
 
 def test_champions_league_excluded_from_region_map():
