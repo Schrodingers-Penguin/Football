@@ -39,13 +39,32 @@ def test_pass_completion_pct_is_ratio_of_totals_not_mean_of_pcts():
     assert row["pass_completion_pct"] == 50.0
 
 
-def test_dominant_position_is_minutes_weighted():
+def test_sub_threshold_role_dropped_single_row():
+    # 80 of 90 min as W (89%), 10 as CF (11%) -> only the W pool, full minutes
+    stats = [_ms(10, minutes=80, bucket="W"), _ms(10, minutes=10, bucket="CF")]
+    rows = build_player_season_rows(stats, season_id=1)
+    assert len(rows) == 1
+    assert rows[0]["position_bucket"] == "W"
+    assert rows[0]["position_minutes"] == 80
+    assert rows[0]["minutes"] == 90  # full-season minutes, not the bucket's
+
+
+def test_hybrid_appears_in_each_eligible_pool_with_same_stats():
+    # 60 min W + 40 min CF, both >=25% -> two rows, identical per-90s,
+    # position_minutes split per bucket.
     stats = [
-        _ms(10, minutes=80, bucket="W"),
-        _ms(10, minutes=10, bucket="CF"),
+        _ms(10, minutes=60, bucket="W", goals=1),
+        _ms(10, minutes=40, bucket="CF", goals=1),
     ]
-    row = build_player_season_rows(stats, season_id=1)[0]
-    assert row["position_bucket"] == "W"
+    rows = build_player_season_rows(stats, season_id=1)
+    by_bucket = {r["position_bucket"]: r for r in rows}
+    assert set(by_bucket) == {"W", "CF"}
+    # FBref-style: same full-season stats in both rows
+    assert by_bucket["W"]["goals_p90"] == by_bucket["CF"]["goals_p90"]
+    assert by_bucket["W"]["minutes"] == by_bucket["CF"]["minutes"] == 100
+    # only the per-bucket sample differs
+    assert by_bucket["W"]["position_minutes"] == 60
+    assert by_bucket["CF"]["position_minutes"] == 40
 
 
 def test_player_with_no_bucket_is_dropped():

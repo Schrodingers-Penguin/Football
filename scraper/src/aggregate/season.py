@@ -17,7 +17,19 @@ def build_player_season_rows(match_stats: list[dict], *, season_id: int) -> list
         agg = aggregate_season(player_rows)
         if not agg or agg.get("position_bucket") is None:
             continue
-        rows.append({"season_id": season_id, "player_id": player_id, **agg})
+        # FBref-style: one row per eligible bucket, same full-season stats,
+        # only position_bucket + position_minutes differ.
+        minutes_by_bucket = _bucket_minutes(player_rows)
+        for bucket in eligible_position_buckets(player_rows):
+            rows.append(
+                {
+                    "season_id": season_id,
+                    "player_id": player_id,
+                    **agg,
+                    "position_bucket": bucket,
+                    "position_minutes": int(minutes_by_bucket.get(bucket, 0)),
+                }
+            )
     return rows
 
 
@@ -87,23 +99,38 @@ def _aerials_won_pct(match_rows: list[dict]) -> float | None:
     return round(total_won / total * 100, 2)
 
 
-def _dominant_position(match_rows: list[dict]) -> str | None:
-    """Minutes-weighted mode of position_bucket across matches."""
-    bucket_minutes: dict[str, int] = {}
+_ELIGIBLE_MINUTES_SHARE = 0.25  # SPEC §7: a role counts at >=25% of season minutes
+
+
+def _bucket_minutes(match_rows: list[dict]) -> dict[str, int]:
+    """Minutes played per position bucket (excludes rows with no bucket)."""
+    out: dict[str, int] = {}
     for r in match_rows:
         bucket = r.get("position_bucket")
         if bucket is None:
             continue
-        bucket_minutes[bucket] = bucket_minutes.get(bucket, 0) + (r.get("minutes") or 0)
+        out[bucket] = out.get(bucket, 0) + (r.get("minutes") or 0)
+    return out
 
+
+def _dominant_position(match_rows: list[dict]) -> str | None:
+    """Minutes-weighted mode of position_bucket across matches."""
+    bucket_minutes = _bucket_minutes(match_rows)
     if not bucket_minutes:
         return None
+    return max(bucket_minutes, key=lambda b: bucket_minutes[b])
 
+
+def eligible_position_buckets(match_rows: list[dict]) -> list[str]:
+    """Buckets the player should be pooled in: those with >=25% of their season
+    minutes. Always includes at least the dominant bucket so every player lands
+    in exactly one pool when they don't split roles. Sorted for stable output.
+    """
+    bucket_minutes = _bucket_minutes(match_rows)
+    if not bucket_minutes:
+        return []
     total = sum(bucket_minutes.values())
-    best_bucket = max(bucket_minutes, key=lambda b: bucket_minutes[b])
-    best_minutes = bucket_minutes[best_bucket]
-
-    if best_minutes / total >= 0.25:
-        return best_bucket
-
-    return best_bucket
+    if total == 0:  # bucketed but zero minutes — fall back to the dominant bucket
+        return [_dominant_position(match_rows)]
+    eligible = [b for b, m in bucket_minutes.items() if m / total >= _ELIGIBLE_MINUTES_SHARE]
+    return sorted(eligible) if eligible else [_dominant_position(match_rows)]
