@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ingest.backfill import backfill
+from src.whoscored.competitions import discover_season_fixtures_url
 from src.whoscored.fixtures import discover_fixtures
 
 
@@ -33,7 +34,9 @@ def main() -> None:
     ap.add_argument("--competition", type=int, required=True, help="WhoScored competition id")
     ap.add_argument("--season", required=True, help="season label, e.g. 2025-2026")
     ap.add_argument(
-        "--fixtures-url", required=True, help="WhoScored fixtures page URL for the season"
+        "--fixtures-url",
+        default=None,
+        help="WhoScored fixtures page URL; omit to auto-resolve from competition + season",
     )
     ap.add_argument(
         "--delay", type=float, default=30.0, help="seconds between scrapes (default 30)"
@@ -49,9 +52,23 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    headless = not args.headed
+    fixtures_url = args.fixtures_url
+    if fixtures_url is None:
+        print(f"Resolving fixtures URL for competition {args.competition} {args.season}...")
+        fixtures_url = discover_season_fixtures_url(
+            args.competition, args.season, headless=headless
+        )
+        if not fixtures_url:
+            ap.error(
+                f"could not resolve a fixtures URL for competition {args.competition} "
+                f"{args.season}; pass --fixtures-url explicitly"
+            )
+        print(f"  {fixtures_url}")
+
     print(f"Discovering fixtures for competition {args.competition} {args.season}...")
     fixtures = discover_fixtures(
-        args.fixtures_url, args.competition, args.season, headless=not args.headed
+        fixtures_url, args.competition, args.season, headless=headless
     )
     print(f"  {len(fixtures)} fixtures discovered")
 
