@@ -77,6 +77,7 @@ def backfill(
     *,
     client=None,
     delay_seconds: float = 30.0,
+    jitter_seconds: float = 0.0,
     headless: bool = True,
     log: Callable[[str], None] = print,
 ) -> dict:
@@ -84,8 +85,13 @@ def backfill(
 
     Imports the browser scraper lazily so the orchestrator and its tests don't
     pull in Playwright unless an actual backfill runs.
+
+    jitter_seconds randomises the inter-scrape gap (sleep = delay + U[0, jitter])
+    to make the request cadence less regular — useful when resuming after a
+    Cloudflare block.
     """
     import asyncio
+    import random
 
     from ..db import get_client
     from ..whoscored.scraper import scrape_match
@@ -103,11 +109,14 @@ def backfill(
             match_data, fx.competition_id, fx.season_label, fx.match_id, client=client
         )
 
+    def sleep(secs: float) -> None:
+        time.sleep(secs + random.uniform(0, jitter_seconds))
+
     return run_backfill(
         fixtures,
         is_done=is_done,
         ingest_one=ingest_one,
         delay_seconds=delay_seconds,
-        sleep=time.sleep,
+        sleep=sleep,
         log=log,
     )

@@ -41,6 +41,9 @@ def main() -> None:
     ap.add_argument(
         "--delay", type=float, default=30.0, help="seconds between scrapes (default 30)"
     )
+    ap.add_argument(
+        "--jitter", type=float, default=0.0, help="random extra 0..N s added to each scrape gap"
+    )
     ap.add_argument("--limit", type=int, default=None, help="only process the first N fixtures")
     ap.add_argument(
         "--headed",
@@ -84,7 +87,9 @@ def main() -> None:
         print("dry run — nothing ingested")
         return
 
-    summary = backfill(fixtures, delay_seconds=args.delay, headless=not args.headed)
+    summary = backfill(
+        fixtures, delay_seconds=args.delay, jitter_seconds=args.jitter, headless=not args.headed
+    )
     print(f"\n{summary}")
 
 

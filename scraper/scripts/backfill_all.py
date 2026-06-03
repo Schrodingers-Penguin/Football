@@ -45,6 +45,19 @@ SKIP = {(2, "2025-2026")}
 def main() -> None:
     ap = argparse.ArgumentParser(description="Backfill all domestic league-seasons.")
     ap.add_argument("--delay", type=float, default=30.0, help="seconds between scrapes")
+    ap.add_argument(
+        "--jitter",
+        type=float,
+        default=0.0,
+        help="random extra 0..N s added to each gap (less regular cadence; use on resume)",
+    )
+    ap.add_argument(
+        "--seasons",
+        nargs="+",
+        default=SEASONS,
+        help=f"season labels to process (default: {' '.join(SEASONS)}). "
+        "On resume after a block, pass only the unfinished ones to skip re-crawling done seasons.",
+    )
     ap.add_argument("--limit", type=int, default=None, help="cap matches per league-season")
     ap.add_argument("--headed", action="store_true", help="show the browser window")
     ap.add_argument("--dry-run", action="store_true", help="resolve + count only; no scrape")
@@ -57,7 +70,7 @@ def main() -> None:
 
     headless = not args.headed
     skip = set() if args.include_pl_current else SKIP
-    jobs = build_jobs(COMPETITIONS, SEASONS, skip=skip)
+    jobs = build_jobs(COMPETITIONS, args.seasons, skip=skip)
 
     def resolve_and_discover(job: SeasonJob):
         url = discover_season_fixtures_url(
@@ -77,7 +90,9 @@ def main() -> None:
         if args.dry_run:
             return {"fixtures_url": url, "discovered": len(fixtures), "dry_run": True}
 
-        summary = backfill(fixtures, delay_seconds=args.delay, headless=headless)
+        summary = backfill(
+            fixtures, delay_seconds=args.delay, jitter_seconds=args.jitter, headless=headless
+        )
 
         client = get_client()
         season_id = get_or_create_season(client, job.competition_id, job.season_label)
