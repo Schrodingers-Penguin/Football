@@ -57,6 +57,12 @@ def aggregate_season(match_rows: list[dict]) -> dict:
             return None
         return round(_sum(num_key) / den * 100, 2)
 
+    def _ratio(num_key: str, den_key: str, ndigits: int = 4) -> float | None:
+        den = _sum(den_key)
+        if den == 0:
+            return None
+        return round(_sum(num_key) / den, ndigits)
+
     position_bucket = _dominant_position(match_rows)
 
     return {
@@ -87,6 +93,42 @@ def aggregate_season(match_rows: list[dict]) -> dict:
         "ball_recoveries_p90": _p90("ball_recoveries"),
         "sca_p90": _p90("sca"),
         "gca_p90": _p90("gca"),
+        # --- v2 metrics (SPEC §8.4) ---
+        "key_passes_p90": _p90("key_passes"),
+        "through_balls_p90": _p90("through_balls_attempted"),
+        "through_ball_completion_pct": _pct("through_balls_completed", "through_balls_attempted"),
+        "crosses_p90": _p90("crosses_attempted"),
+        "cross_completion_pct": _pct("crosses_completed", "crosses_attempted"),
+        "passes_into_final_third_p90": _p90("passes_into_final_third"),
+        "passes_into_box_p90": _p90("passes_into_box"),
+        "long_balls_p90": _p90("long_balls_attempted"),
+        "long_ball_completion_pct": _pct("long_balls_completed", "long_balls_attempted"),
+        "big_chances_created_p90": _p90("big_chances_created"),
+        "carries_into_final_third_p90": _p90("carries_into_final_third"),
+        "carries_into_box_p90": _p90("carries_into_box"),
+        "carry_distance_p90": _p90("carry_distance"),
+        "progressive_carry_distance_p90": _p90("progressive_carry_distance"),
+        "miscontrols_p90": _p90("miscontrols"),
+        "dispossessed_p90": _p90("dispossessed"),
+        "shots_on_target_pct": _pct("shots_on_target", "shots"),
+        "npxg_per_shot": _ratio("npxg", "shots"),
+        "avg_shot_distance": _ratio("shot_distance_sum", "shots", 2),
+        "np_g_minus_xg": round(_sum("npg") - _sum("npxg"), 4),
+        "big_chances_faced_p90": _p90("big_chances_faced"),
+        "big_chance_conversion_pct": _pct("big_chances_scored", "big_chances_faced"),
+        "tackle_win_pct": _pct("tackles_won", "tackles"),
+        "tackles_def_third_p90": _p90("tackles_def_third"),
+        "tackles_mid_third_p90": _p90("tackles_mid_third"),
+        "tackles_att_third_p90": _p90("tackles_att_third"),
+        "dribbled_past_p90": _p90("dribbled_past"),
+        "errors_leading_to_shot_p90": _p90("errors_leading_to_shot"),
+        "xa_open_play_p90": _p90("xa_open_play"),
+        "xa_set_piece_p90": _p90("xa_set_piece"),
+        "xt_p90": _p90("xt"),
+        "xt_pass_p90": _p90("xt_pass"),
+        "xt_carry_p90": _p90("xt_carry"),
+        "xg_chain_p90": _p90("xg_chain"),
+        "xg_buildup_p90": _p90("xg_buildup"),
     }
 
 

@@ -75,3 +75,21 @@ def test_player_with_no_bucket_is_dropped():
 def test_empty_input():
     assert build_player_season_rows([], season_id=1) == []
     assert aggregate_season([]) == {}
+
+
+def test_v2_metrics_rolled_up():
+    rows = [
+        _ms(10, minutes=90, key_passes=2, tackles=4, tackles_won=3, npg=1, npxg=0.4, xt=0.30),
+        _ms(10, minutes=90, key_passes=0, tackles=0, tackles_won=0, npg=0, npxg=0.6, xt=0.10),
+    ]
+    agg = aggregate_season(rows)
+    assert agg["key_passes_p90"] == 1.0  # 2 over 180 min
+    assert agg["tackle_win_pct"] == 75.0  # 3/4
+    assert agg["xt_p90"] == 0.2  # 0.40 over 180 min
+    assert agg["np_g_minus_xg"] == round(1 - 1.0, 4)  # npg 1 - npxg 1.0
+
+
+def test_v2_ratio_none_when_no_attempts():
+    agg = aggregate_season([_ms(10, minutes=90)])
+    assert agg["tackle_win_pct"] is None  # no tackles
+    assert agg["npxg_per_shot"] is None  # no shots
