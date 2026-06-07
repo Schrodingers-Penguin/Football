@@ -263,6 +263,89 @@ WhoScored coordinates: x ∈ [0, 100], y ∈ [0, 100]. **Verify in Phase 1**: co
 - **Carries**: not a primary event in WhoScored. Derive by stitching consecutive touches by the same player. A carry's start = first touch by player after gaining possession; end = the touch immediately before they pass, shoot, lose possession, or are dispossessed. Distance is the straight-line between start and end.
 - **SCA / GCA**: walk back through the event stream from each shot, picking up to two preceding offensive actions by *different* events (same player can be credited for one of the two slots but not both).
 
+### 8.4 Additional metrics (v2)
+
+Additive to the 23 in §8.2. All are derivable from the stored `matchCentreData` — the source qualifier/event for each was verified against a real match's event vocabulary — so they are added by **reprocessing the stored raw JSONs, not re-scraping** (SPEC §5).
+
+Conventions reused from §8.1–§8.2: coordinates `x, y ∈ [0,100]` with each team attacking toward `x=100` (verified Phase 1); **penalty area** = `x ≥ 83 ∧ 21 ≤ y ≤ 79`; **final third** = `x ≥ 66.67`; distances converted to metres via a 105×68 pitch. "Completed" = `outcomeType=Successful`. Penalty-context stats use **non-penalty** events to stay consistent with npxG/npG.
+
+**Normalization:** `player_match_stats` stores raw counts/sums **and** ratio components (so season ratios are summed-then-divided, never an average of per-match percentages). `player_season_stats` stores the per-90s, ratios, and differences below, and the percentile view gains one column per metric.
+
+#### Passing & creation
+
+| Metric | Definition | Source (verified) | Season form |
+|---|---|---|---|
+| Key passes | Passes carrying `KeyPass` (a pass directly leading to a shot; superset of assists) | `KeyPass` qualifier | per-90 |
+| Through balls | Passes carrying `Throughball` | `Throughball` qualifier | per-90 |
+| Crosses | Open-play passes carrying `Cross` | `Cross` qualifier | per-90 |
+| Passes into final third | Completed passes with `start_x < 66.67 ≤ end_x` (open play) | `PassEndX` | per-90 |
+| Passes into penalty area | Completed open-play passes ending in the box from a start outside it | `PassEndX/Y` | per-90 |
+| Long-ball completion % | Completed `Longball` passes ÷ attempted `Longball` passes | `Longball` qualifier + outcome | ratio |
+| Big chances created | Passes carrying `BigChanceCreated` | `BigChanceCreated` qualifier | per-90 |
+
+#### Carrying & possession (carries derived per §8.3)
+
+| Metric | Definition | Source | Season form |
+|---|---|---|---|
+| Carries into final third | Carries with `start_x < 66.67 ≤ end_x` | derived carry | per-90 |
+| Carries into penalty area | Carries ending in the box from a start outside it | derived carry | per-90 |
+| Total carry distance | Σ straight-line carry length (m) | derived carry | per-90 (m/90) |
+| Progressive carry distance ("fields gained") | Σ toward-goal distance = Σ max(0, end_x − start_x) in metres | derived carry | per-90 |
+| Miscontrols | `BallTouch` events with `Unsuccessful` outcome | `BallTouch` + outcome | per-90 |
+| Dispossessed | `Dispossessed` events | `Dispossessed` event | per-90 |
+
+#### Shooting quality (non-penalty unless noted)
+
+| Metric | Definition | Source | Season form |
+|---|---|---|---|
+| Shots on target % | (Goal + SavedShot) ÷ non-penalty shots — on-frame only (excludes blocked, off-target, woodwork) | shot event types | ratio |
+| npxG per shot | npxG ÷ non-penalty shots | xG model | ratio |
+| Average shot distance | Mean distance from shot `(x,y)` to goal centre `(100,50)`, metres, non-penalty shots | shot coords | value |
+| G − xG (finishing) | Non-penalty goals − npxG | goals + xG model | difference (also per-90) |
+
+#### Defending
+
+| Metric | Definition | Source | Season form |
+|---|---|---|---|
+| Tackle win % | Successful `Tackle` ÷ all `Tackle` | `Tackle` outcomeType | ratio |
+| Tackles by third | `Tackle` counts split by x-zone: def `<33.3`, mid `33.3–66.67`, att `≥66.67` | `Tackle` coords | per-90 (×3) |
+| Times dribbled past | `Challenge` events (defender beaten by a take-on) | `Challenge` event | per-90 |
+| Errors leading to a shot | `Error` events carrying `LeadingToAttempt` | `Error` + `LeadingToAttempt` | per-90 |
+
+#### Creation split
+
+| Metric | Definition | Source | Season form |
+|---|---|---|---|
+| xA (open play) / xA (set piece) | Existing xA partitioned by the key pass's situation: set-piece if the pass carries `CornerTaken` / `FreekickTaken` / `IndirectFreekickTaken` / `ThrowIn` / `FromCorner` / `SetPiece`, else open play. Sum = total xA | pass set-piece qualifiers + xG model | per-90 (×2) |
+
+#### 8.4.1 Expected Threat (xT) — fit our own
+
+xT is **modelled**, not tagged. We fit our own grid on our ~7,000-match event set (consistent with the WhoScored-native xG decision; avoids the coordinate-transfer error of a foreign grid).
+
+- **Grid:** 16×12 (Karun Singh possession-value formulation), attack toward `x=100`, **open-play moves only** in the transition model (set pieces excluded so they don't distort zone transitions).
+- **Fit:** per cell, from the data — `P(shot)`, `P(goal|shot)` (zone scoring rate), `P(move)`, and the move transition matrix `T[z→z']` from successful passes + carries. Iterate `xT[z] = P(shot)·P(goal|shot) + P(move)·Σ T[z→z']·xT[z']` to convergence.
+- **Player credit:** for each successful open-play pass/carry, `Δ = xT[end_cell] − xT[start_cell]` (net; backward moves count negative).
+- **Metrics:** `xt` (Σ Δ over passes + carries), `xt_pass`, `xt_carry`. per-90.
+- **Validation:** value surface rises toward goal; per-match team xT tracks team npxG; cross-check the surface shape against a published grid as an external reference.
+
+#### 8.4.2 xGChain / xGBuildup — npxG basis
+
+Possession-involvement metrics (full per-possession definition in working notes). WhoScored carries **no possession marker**, so possessions are segmented from the event stream.
+
+- **Segmentation:** events chunked into single-team possessions. A possession ends on a shot, a dead-ball (ball out, foul awarded, offside, goal, period end, substitution), or when the opponent establishes control. **Smoothing:** brief opponent interruptions the team immediately regains (an unsuccessful opponent touch / block / clearance recovered on the next action) do *not* end the possession — without this, chains are under-credited (median involvement collapses to ~2; target ~3–4).
+- **Possession value `V`:** the highest **non-penalty** xG among shots in that possession.
+- **npxGChain:** every player with ≥1 on-ball touch in a shot-ending possession `+= V`, once per possession.
+- **npxGBuildup:** as above, excluding the shooter and the assister (the pass immediately preceding the shot).
+- Penalties excluded (npxG basis); set-piece possessions included.
+- **Metrics:** `xg_chain`, `xg_buildup`. per-90.
+- **Validation:** per-possession credit reconciles to `V`; team totals track team npxG.
+
+#### 8.4.3 Known limitations
+
+- WhoScored does not flag whether a tackle was against a dribbler, so FBref's "dribblers tackled %" split is **not reproducible** — we expose **Tackle win %** and **Times dribbled past** instead.
+- Carry-derived metrics inherit the §8.3 carry-stitching heuristic.
+- xGChain/xGBuildup over-credit players on possession-dominant teams and deep recyclers (a keeper recycling in a long build-up is credited); read them as **involvement**, not value-added.
+
 ## 9. Comparison pool and percentile rules
 
 - **Pool definition**: same competition + same season + same position bucket.
