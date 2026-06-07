@@ -51,9 +51,15 @@ async def scrape_match(url: str, headless: bool = True) -> dict:
             await asyncio.sleep(random.uniform(3, 6))
 
             # Prefer JS evaluation: avoids JSON-invalid values (undefined etc.)
-            # that WhoScored embeds in the script tag.
+            # that WhoScored embeds in the script tag. Guard the lookup: on some
+            # pages window.require isn't built yet (or at all), in which case the
+            # raw expression throws and we'd lose a salvageable match — return
+            # null instead and fall through to the HTML parser, which reads the
+            # embedded <script> directly.
             raw_json = await page.evaluate(
-                "() => JSON.stringify(window.require.config.params['args'].matchCentreData)"
+                "() => { try {"
+                " return JSON.stringify(window.require.config.params['args'].matchCentreData);"
+                " } catch (e) { return null; } }"
             )
             if raw_json:
                 return json.loads(raw_json)
