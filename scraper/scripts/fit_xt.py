@@ -50,24 +50,33 @@ def _accumulate(limit: int, competition_id: int | None) -> dict:
                 if e["type_name"] == "Goal":
                     goals[i] += 1
 
-        move_list: list[tuple[float, float, float, float]] = []
+        # Open-play passes: EVERY pass (any outcome) is a move attempt that counts
+        # in the denominator; only a successful one adds a transition. The missing
+        # transition mass (turnovers) is lost possession -> 0 value, which is what
+        # makes deep zones decay instead of pooling into a flat plateau.
         for e in evs:
-            if e["type_name"] == "Pass" and e["outcome_name"] == "Successful":
-                if _is_set_piece_pass(e):
-                    continue
-                ex, ey = get_qualifier(e, "PassEndX"), get_qualifier(e, "PassEndY")
-                sx, sy = e.get("x"), e.get("y")
-                if ex is not None and ey is not None and sx is not None and sy is not None:
-                    move_list.append((float(sx), float(sy), float(ex), float(ey)))
-        for pid in {e["player_id"] for e in evs if e["player_id"] is not None}:
-            move_list.extend(_derive_carries(evs, pid))
-
-        for sx, sy, ex, ey in move_list:
+            if e["type_name"] != "Pass" or _is_set_piece_pass(e):
+                continue
+            sx, sy = e.get("x"), e.get("y")
+            if sx is None or sy is None:
+                continue
             i = cell_index(sx, sy)
-            j = cell_index(ex, ey)
-            actions[i] += 1
             moves[i] += 1
-            trans[i][j] = trans[i].get(j, 0) + 1
+            actions[i] += 1
+            if e["outcome_name"] == "Successful":
+                ex, ey = get_qualifier(e, "PassEndX"), get_qualifier(e, "PassEndY")
+                if ex is not None and ey is not None:
+                    j = cell_index(float(ex), float(ey))
+                    trans[i][j] = trans[i].get(j, 0) + 1
+
+        # Carries are successful by construction (they end in the player's action).
+        for pid in {e["player_id"] for e in evs if e["player_id"] is not None}:
+            for sx, sy, ex, ey in _derive_carries(evs, pid):
+                i = cell_index(sx, sy)
+                j = cell_index(ex, ey)
+                moves[i] += 1
+                actions[i] += 1
+                trans[i][j] = trans[i].get(j, 0) + 1
 
         if n_matches % 100 == 0:
             print(f"  accumulated {n_matches} matches")

@@ -54,6 +54,7 @@ from ..stats.shooting import (
 )
 from ..stats.shot_context import compute_xg_xa
 from ..stats.take_ons import count_successful_take_ons, count_take_ons_attempted
+from ..stats.xt import xt_carry, xt_pass
 
 _POSITION_BUCKET: dict[str, str] = {
     "GK": "GK",
@@ -215,6 +216,11 @@ def aggregate_match(
             "xa_open_play": round(xa_open, 4),
             "xa_set_piece": round(xa_sp, 4),
         }
+        xtp = xt_pass(events, player_id)
+        xtc = xt_carry(events, player_id)
+        row["xt_pass"] = xtp
+        row["xt_carry"] = xtc
+        row["xt"] = round(xtp + xtc, 4)
 
         rows.append(row)
 
