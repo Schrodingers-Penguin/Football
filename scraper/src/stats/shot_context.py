@@ -68,6 +68,36 @@ def _assist_is_set_piece(assist_event: dict) -> bool:
     return bool(_names(assist_event) & _SET_PIECE_ASSIST)
 
 
+def iter_shot_xg(events: list[dict]):
+    """Yield (shot_event, npxg, assist_event_or_None) for each non-penalty shot.
+
+    Single source of truth for per-shot model xG and its key-pass attribution;
+    consumed by both xA (compute_xg_xa) and the chain metrics (xGChain).
+    """
+    by_team_eid: dict[tuple, dict] = {}
+    for e in events:
+        eid = e.get("event_id")
+        if eid is not None:
+            by_team_eid.setdefault((e.get("team_id"), eid), e)
+
+    for ev in events:
+        if ev["type_name"] not in _SHOT_TYPES:
+            continue
+        quals = _names(ev)
+        situation = shot_situation(quals)
+        if situation == "penalty":
+            continue  # npxG excludes penalties
+        assist = by_team_eid.get((ev.get("team_id"), _related_event_id(ev.get("qualifiers", []))))
+        xg = shot_xg(
+            ev.get("x") or 0.0,
+            ev.get("y") or 0.0,
+            is_head="Head" in quals,
+            situation=situation,
+            last_action=last_action(assist),
+        )
+        yield ev, xg, assist
+
+
 def compute_xg_xa(
     events: list[dict],
 ) -> tuple[dict[int, float], dict[int, float], dict[int, float], dict[int, float]]:
@@ -79,39 +109,15 @@ def compute_xg_xa(
     xA is additionally split by whether that key pass was a set-piece delivery;
     xa_open_play + xa_set_piece == xa for every player.
     """
-    by_team_eid: dict[tuple, dict] = {}
-    for e in events:
-        eid = e.get("event_id")
-        if eid is not None:
-            by_team_eid.setdefault((e.get("team_id"), eid), e)
-
     npxg: dict[int, float] = {}
     xa: dict[int, float] = {}
     xa_open: dict[int, float] = {}
     xa_sp: dict[int, float] = {}
 
-    for ev in events:
-        if ev["type_name"] not in _SHOT_TYPES:
-            continue
-        quals = _names(ev)
-        situation = shot_situation(quals)
-        if situation == "penalty":
-            continue  # npxG excludes penalties
-
-        xg = shot_xg(
-            ev.get("x") or 0.0,
-            ev.get("y") or 0.0,
-            is_head="Head" in quals,
-            situation=situation,
-            last_action=last_action(
-                by_team_eid.get((ev.get("team_id"), _related_event_id(ev.get("qualifiers", []))))
-            ),
-        )
-
+    for ev, xg, assist in iter_shot_xg(events):
         shooter = ev["player_id"]
         npxg[shooter] = npxg.get(shooter, 0.0) + xg
 
-        assist = by_team_eid.get((ev.get("team_id"), _related_event_id(ev.get("qualifiers", []))))
         if assist is not None and assist.get("player_id") is not None:
             passer = assist["player_id"]
             xa[passer] = xa.get(passer, 0.0) + xg

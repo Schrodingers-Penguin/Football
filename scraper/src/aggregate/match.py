@@ -54,6 +54,7 @@ from ..stats.shooting import (
 )
 from ..stats.shot_context import compute_xg_xa
 from ..stats.take_ons import count_successful_take_ons, count_take_ons_attempted
+from ..stats.xgchain import compute_xg_chain
 from ..stats.xt import xt_carry, xt_pass
 
 _POSITION_BUCKET: dict[str, str] = {
@@ -104,6 +105,7 @@ def aggregate_match(
 
     # xG/xA come from the fitted WhoScored model — computed once for the match.
     npxg_by_player, xa_by_player, xa_open_by_player, xa_sp_by_player = compute_xg_xa(events)
+    chain_by_player, buildup_by_player = compute_xg_chain(events)
 
     all_players: list[dict] = []
     for side in ("home", "away"):
@@ -221,6 +223,8 @@ def aggregate_match(
         row["xt_pass"] = xtp
         row["xt_carry"] = xtc
         row["xt"] = round(xtp + xtc, 4)
+        row["xg_chain"] = round(chain_by_player.get(player_id, 0.0), 4)
+        row["xg_buildup"] = round(buildup_by_player.get(player_id, 0.0), 4)
 
         rows.append(row)
 
