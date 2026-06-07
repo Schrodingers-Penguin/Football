@@ -276,8 +276,8 @@ Conventions reused from §8.1–§8.2: coordinates `x, y ∈ [0,100]` with each 
 | Metric | Definition | Source (verified) | Season form |
 |---|---|---|---|
 | Key passes | Passes carrying `KeyPass` (a pass directly leading to a shot; superset of assists) | `KeyPass` qualifier | per-90 |
-| Through balls | Passes carrying `Throughball` | `Throughball` qualifier | per-90 |
-| Crosses | Open-play passes carrying `Cross` | `Cross` qualifier | per-90 |
+| Through balls (attempted / completed) | Passes carrying `Throughball`; completed adds `outcomeType=Successful` | `Throughball` qualifier + outcome | per-90 each (+ completion %) |
+| Crosses (attempted / completed) | Open-play passes carrying `Cross`; completed adds `outcomeType=Successful` | `Cross` qualifier + outcome | per-90 each (+ completion %) |
 | Passes into final third | Completed passes with `start_x < 66.67 ≤ end_x` (open play) | `PassEndX` | per-90 |
 | Passes into penalty area | Completed open-play passes ending in the box from a start outside it | `PassEndX/Y` | per-90 |
 | Long-ball completion % | Completed `Longball` passes ÷ attempted `Longball` passes | `Longball` qualifier + outcome | ratio |
@@ -302,6 +302,7 @@ Conventions reused from §8.1–§8.2: coordinates `x, y ∈ [0,100]` with each 
 | npxG per shot | npxG ÷ non-penalty shots | xG model | ratio |
 | Average shot distance | Mean distance from shot `(x,y)` to goal centre `(100,50)`, metres, non-penalty shots | shot coords | value |
 | G − xG (finishing) | Non-penalty goals − npxG | goals + xG model | difference (also per-90) |
+| Big chances (faced / scored / missed) | Shots carrying `BigChance`: faced = all; scored = `Goal`; missed = faced − scored | `BigChance` qualifier + shot outcome | per-90 each (+ conversion % = scored ÷ faced) |
 
 #### Defending
 
