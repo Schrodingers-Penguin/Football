@@ -80,7 +80,7 @@ def test_assisted_shot_credits_shooter_and_passer():
         _pass(_q("KeyPass"), event_id=42),
         _shot(_q("RegularPlay", related=42)),
     ]
-    npxg, xa = compute_xg_xa(events)
+    npxg, xa, *_ = compute_xg_xa(events)
     assert SHOOTER in npxg and 0.0 < npxg[SHOOTER] < 1.0
     # passer's xA equals the xG of the shot their pass created
     assert xa[PASSER] == npxg[SHOOTER]
@@ -88,7 +88,7 @@ def test_assisted_shot_credits_shooter_and_passer():
 
 def test_unassisted_shot_has_no_xa():
     events = [_shot(_q("RegularPlay"))]  # no RelatedEventId
-    npxg, xa = compute_xg_xa(events)
+    npxg, xa, *_ = compute_xg_xa(events)
     assert SHOOTER in npxg
     assert xa == {}
 
@@ -98,7 +98,7 @@ def test_penalty_excluded_from_npxg_and_xa():
         _pass(_q("KeyPass"), event_id=42),
         _shot(_q("Penalty", related=42), x=88.5, y=50.0),
     ]
-    npxg, xa = compute_xg_xa(events)
+    npxg, xa, *_ = compute_xg_xa(events)
     assert npxg == {}
     assert xa == {}
 
@@ -109,7 +109,7 @@ def test_assist_lookup_is_team_scoped():
         _pass(_q("KeyPass"), team_id=999, event_id=42),  # wrong team
         _shot(_q("RegularPlay", related=42)),
     ]
-    npxg, xa = compute_xg_xa(events)
+    npxg, xa, *_ = compute_xg_xa(events)
     assert SHOOTER in npxg
     assert xa == {}  # no same-team assist resolves
 
@@ -124,6 +124,6 @@ def test_header_lowers_xg_vs_foot_same_location():
             + [{"type": {"displayName": "Head"}}]
         )
     ]
-    npxg_foot, _ = compute_xg_xa(foot)
-    npxg_head, _ = compute_xg_xa(head)
+    npxg_foot, *_ = compute_xg_xa(foot)
+    npxg_head, *_ = compute_xg_xa(head)
     assert npxg_head[SHOOTER] < npxg_foot[SHOOTER]

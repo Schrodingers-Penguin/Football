@@ -22,3 +22,24 @@ def count_ball_recoveries(events: list[dict], player_id: int) -> int:
         for e in events
         if e["player_id"] == player_id and e["type_name"] == "BallRecovery"
     )
+
+
+# --- v2 metrics (SPEC §8.4) -------------------------------------------------
+
+
+def count_miscontrols(events: list[dict], player_id: int) -> int:
+    """Unsuccessful BallTouch events (a bad first touch / failed control)."""
+    return sum(
+        1
+        for e in events
+        if e["player_id"] == player_id
+        and e["type_name"] == "BallTouch"
+        and e["outcome_name"] == "Unsuccessful"
+    )
+
+
+def count_dispossessed(events: list[dict], player_id: int) -> int:
+    """Dispossessed events (tackled/robbed in possession)."""
+    return sum(
+        1 for e in events if e["player_id"] == player_id and e["type_name"] == "Dispossessed"
+    )

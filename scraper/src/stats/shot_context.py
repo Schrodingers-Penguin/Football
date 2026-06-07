@@ -53,12 +53,31 @@ def last_action(assist_event: dict | None) -> str:
     return "pass"
 
 
-def compute_xg_xa(events: list[dict]) -> tuple[dict[int, float], dict[int, float]]:
-    """Return (npxg_by_player, xa_by_player) for the match.
+# Assist-pass qualifiers that mark the key pass as a set-piece delivery.
+_SET_PIECE_ASSIST = {
+    "CornerTaken",
+    "FreekickTaken",
+    "IndirectFreekickTaken",
+    "ThrowIn",
+    "FromCorner",
+    "SetPiece",
+}
+
+
+def _assist_is_set_piece(assist_event: dict) -> bool:
+    return bool(_names(assist_event) & _SET_PIECE_ASSIST)
+
+
+def compute_xg_xa(
+    events: list[dict],
+) -> tuple[dict[int, float], dict[int, float], dict[int, float], dict[int, float]]:
+    """Return (npxg, xa, xa_open_play, xa_set_piece) by player for the match.
 
     npxG: sum of model xG over a player's non-penalty shots.
     xA:   sum of model xG of shots arising from a player's key passes
           (the shot's RelatedEventId pass; that passer is credited).
+    xA is additionally split by whether that key pass was a set-piece delivery;
+    xa_open_play + xa_set_piece == xa for every player.
     """
     by_team_eid: dict[tuple, dict] = {}
     for e in events:
@@ -68,6 +87,8 @@ def compute_xg_xa(events: list[dict]) -> tuple[dict[int, float], dict[int, float
 
     npxg: dict[int, float] = {}
     xa: dict[int, float] = {}
+    xa_open: dict[int, float] = {}
+    xa_sp: dict[int, float] = {}
 
     for ev in events:
         if ev["type_name"] not in _SHOT_TYPES:
@@ -94,5 +115,7 @@ def compute_xg_xa(events: list[dict]) -> tuple[dict[int, float], dict[int, float
         if assist is not None and assist.get("player_id") is not None:
             passer = assist["player_id"]
             xa[passer] = xa.get(passer, 0.0) + xg
+            bucket = xa_sp if _assist_is_set_piece(assist) else xa_open
+            bucket[passer] = bucket.get(passer, 0.0) + xg
 
-    return npxg, xa
+    return npxg, xa, xa_open, xa_sp
