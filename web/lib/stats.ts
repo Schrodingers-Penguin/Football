@@ -96,3 +96,47 @@ export const CATEGORY_ORDER: readonly StatCategory[] = [
   "possession",
   "defending",
 ];
+
+/**
+ * Team/league aggregate catalogue. `key` is a column in team_season_stats /
+ * league_season_stats (a SUM of the underlying per-match stat). `ratio` marks a
+ * value that's already a percentage (not summable / per-match). Everything else
+ * is a total with a meaningful per-match rate (total / matches_played).
+ */
+export interface TeamStatDef {
+  key: string;
+  label: string;
+  category: StatCategory;
+  ratio?: boolean;
+}
+
+export const TEAM_STAT_CATALOG: readonly TeamStatDef[] = [
+  { key: "goals", label: "Goals", category: "attacking" },
+  { key: "npxg", label: "npxG", category: "attacking" },
+  { key: "shots", label: "Shots", category: "attacking" },
+  { key: "shots_on_target", label: "Shots on Target", category: "attacking" },
+  { key: "goals_long_range", label: "Long-Range Goals", category: "attacking" },
+  { key: "shots_long_range", label: "Long-Range Shots", category: "attacking" },
+  { key: "goals_outside_box", label: "Goals Outside Box", category: "attacking" },
+  { key: "shots_outside_box", label: "Shots Outside Box", category: "attacking" },
+  { key: "big_chances_faced", label: "Big Chances", category: "attacking" },
+  { key: "big_chances_created", label: "Big Chances Created", category: "passing" },
+  { key: "key_passes", label: "Key Passes", category: "passing" },
+  { key: "progressive_passes", label: "Progressive Passes", category: "passing" },
+  { key: "passes_into_box", label: "Passes into Box", category: "passing" },
+  { key: "crosses_attempted", label: "Crosses", category: "passing" },
+  { key: "through_balls_attempted", label: "Through Balls", category: "passing" },
+  { key: "pass_completion_pct", label: "Pass Completion %", category: "passing", ratio: true },
+  { key: "xt", label: "Expected Threat (xT)", category: "possession" },
+  { key: "xg_chain", label: "xGChain", category: "possession" },
+  { key: "successful_take_ons", label: "Successful Take-Ons", category: "possession" },
+  { key: "progressive_carries", label: "Progressive Carries", category: "possession" },
+  { key: "tackles", label: "Tackles", category: "defending" },
+  { key: "interceptions", label: "Interceptions", category: "defending" },
+  { key: "clearances", label: "Clearances", category: "defending" },
+  { key: "aerials_won", label: "Aerials Won", category: "defending" },
+] as const;
+
+export const TEAM_STAT_BY_KEY: ReadonlyMap<string, TeamStatDef> = new Map(
+  TEAM_STAT_CATALOG.map((s) => [s.key, s]),
+);
