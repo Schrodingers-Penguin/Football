@@ -50,6 +50,10 @@ from ..stats.sca import count_gca, count_sca
 from ..stats.shooting import (
     count_big_chances_faced,
     count_big_chances_scored,
+    count_goals_long_range,
+    count_goals_outside_box,
+    count_shots_long_range,
+    count_shots_outside_box,
     shot_distance_sum,
 )
 from ..stats.shot_context import compute_xg_xa
@@ -207,6 +211,10 @@ def aggregate_match(
             "miscontrols": count_miscontrols(events, player_id),
             "dispossessed": count_dispossessed(events, player_id),
             "shot_distance_sum": shot_distance_sum(events, player_id),
+            "shots_outside_box": count_shots_outside_box(events, player_id),
+            "goals_outside_box": count_goals_outside_box(events, player_id),
+            "shots_long_range": count_shots_long_range(events, player_id),
+            "goals_long_range": count_goals_long_range(events, player_id),
             "big_chances_faced": count_big_chances_faced(events, player_id),
             "big_chances_scored": count_big_chances_scored(events, player_id),
             "tackles_won": count_tackles_won(events, player_id),

@@ -167,6 +167,28 @@ def test_shot_distance_sum_excludes_penalty():
     assert shot_distance_sum(evs, P) == 12.6
 
 
+def test_distance_band_shots_and_goals():
+    # in box (x=90), outside box (x=70 -> dist ~ (100-70)/100*105 = 31.5m, long range),
+    # outside box but < 25m (x=80 -> dist 21m, not long range)
+    evs = [
+        shot("Goal", x=90.0, y=50.0),  # in box, scored
+        shot("Goal", x=70.0, y=50.0),  # outside box, long range, scored
+        shot("MissedShots", x=80.0, y=50.0),  # outside box, not long range
+        shot("Goal", x=70.0, y=50.0, quals=["Penalty"]),  # excluded
+    ]
+    from src.stats.shooting import (
+        count_goals_long_range,
+        count_goals_outside_box,
+        count_shots_long_range,
+        count_shots_outside_box,
+    )
+
+    assert count_shots_outside_box(evs, P) == 2  # x=70 and x=80
+    assert count_goals_outside_box(evs, P) == 1  # x=70 goal
+    assert count_shots_long_range(evs, P) == 1  # only x=70 (31.5m)
+    assert count_goals_long_range(evs, P) == 1
+
+
 def test_big_chances_faced_and_scored():
     evs = [
         shot("Goal", quals=["BigChance"]),
