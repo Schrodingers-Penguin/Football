@@ -100,8 +100,8 @@ def iter_stored_matches(
 def reprocess_match(item: dict, *, client) -> int:
     """Re-aggregate one stored match and upsert its player_match_stats rows.
 
-    Excludes subs with no position bucket (NOT NULL constraint), mirroring the
-    fresh-ingest pipeline. Returns the number of rows written.
+    Includes every player who appeared, substitutes included (bucket NULL),
+    mirroring the fresh-ingest pipeline. Returns the number of rows written.
     """
     from ..aggregate.match import aggregate_match
     from ..parser.events import parse_events
@@ -109,6 +109,8 @@ def reprocess_match(item: dict, *, client) -> int:
 
     meta = item["meta"]
     events = parse_events(item["match_data"])
+    # Includes substitutes (position_bucket NULL) so their contributions count
+    # toward player and team/league totals.
     rows = aggregate_match(
         events,
         item["match_data"],
@@ -116,7 +118,6 @@ def reprocess_match(item: dict, *, client) -> int:
         competition_id=meta["competition_id"],
         season_label="",  # unused by aggregate; row keys come from match_data
     )
-    rows = [r for r in rows if r.get("position_bucket") is not None]
     writers.upsert_player_match_stats(client, rows)
     return len(rows)
 

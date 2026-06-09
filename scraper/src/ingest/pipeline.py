@@ -18,17 +18,18 @@ from .metadata import extract_match_row, extract_players, extract_teams
 def _stat_rows(
     events: list[dict], match_data: dict, match_id: int, season_label: str
 ) -> list[dict]:
-    """player_match_stats rows, excluding substitutes with no position bucket
-    (schema requires position_bucket NOT NULL; SPEC §7 excludes subs from
-    position assignment)."""
-    rows = aggregate_match(
+    """player_match_stats rows for every player who appeared, substitutes
+    included (position_bucket NULL for subs). Subs' contributions must count
+    toward player and team/league totals; the season rollup assigns a player's
+    position pool from their bucketed (started) minutes and drops players who
+    only ever subbed with no position."""
+    return aggregate_match(
         events=events,
         match_data=match_data,
         match_id=match_id,
         competition_id=0,  # unused by aggregate; metadata carries the real ids
         season_label=season_label,
     )
-    return [r for r in rows if r.get("position_bucket") is not None]
 
 
 def ingest_match(
