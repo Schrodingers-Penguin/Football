@@ -6,10 +6,20 @@ on:
     - cron: "0 2 * * *"
   workflow_dispatch: # allow manual trigger
 
+# Don't let a slow run overlap the next day's run.
+concurrency:
+  group: daily-scraper
+  cancel-in-progress: false
+
 jobs:
   scrape:
+    # GitHub-hosted runners are datacenter IPs, which Cloudflare flags quickly.
+    # Daily volume is low (a match-day's games) so this usually gets through, and
+    # each run is a fresh IP. If it starts failing on blocks, register a
+    # self-hosted runner on a residential connection (e.g. Max's Mac) and change
+    # this to:  runs-on: [self-hosted]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -33,12 +43,17 @@ jobs:
 
       - name: Run daily incremental scrape
         working-directory: scraper
-        run: |
-          # TODO (Phase 5): replace with actual entry point
-          echo "Daily scrape not yet implemented — scaffolding only"
+        run: python scripts/daily_update.py
 
       - name: Notify on failure
         if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          echo "Scrape failed — check workflow logs"
-          # TODO (Phase 5): add Discord/Telegram webhook notification here
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -s -H "Content-Type: application/json" \
+              -d '{"content":"⚠️ Daily football scrape failed — check the GitHub Actions logs."}' \
+              "$DISCORD_WEBHOOK_URL" || true
+          else
+            echo "Daily scrape failed. Set the DISCORD_WEBHOOK_URL repo secret for push alerts."
+          fi
