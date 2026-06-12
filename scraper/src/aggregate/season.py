@@ -124,6 +124,8 @@ def aggregate_season(match_rows: list[dict]) -> dict:
         "errors_leading_to_shot_p90": _p90("errors_leading_to_shot"),
         "xa_open_play_p90": _p90("xa_open_play"),
         "xa_set_piece_p90": _p90("xa_set_piece"),
+        "npxg_open_play_p90": _p90("npxg_open_play"),
+        "npxg_set_piece_p90": _p90("npxg_set_piece"),
         "xt_p90": _p90("xt"),
         "xt_pass_p90": _p90("xt_pass"),
         "xt_carry_p90": _p90("xt_carry"),

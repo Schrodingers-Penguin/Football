@@ -69,10 +69,11 @@ def _assist_is_set_piece(assist_event: dict) -> bool:
 
 
 def iter_shot_xg(events: list[dict]):
-    """Yield (shot_event, npxg, assist_event_or_None) for each non-penalty shot.
+    """Yield (shot_event, npxg, situation, assist_event_or_None) per non-penalty shot.
 
-    Single source of truth for per-shot model xG and its key-pass attribution;
-    consumed by both xA (compute_xg_xa) and the chain metrics (xGChain).
+    `situation` is the shot's play type (open / corner / setpiece / dfk). Single
+    source of truth for per-shot model xG, consumed by xA, the npxG split, and
+    the chain metrics (xGChain).
     """
     by_team_eid: dict[tuple, dict] = {}
     for e in events:
@@ -95,28 +96,40 @@ def iter_shot_xg(events: list[dict]):
             situation=situation,
             last_action=last_action(assist),
         )
-        yield ev, xg, assist
+        yield ev, xg, situation, assist
 
 
 def compute_xg_xa(
     events: list[dict],
-) -> tuple[dict[int, float], dict[int, float], dict[int, float], dict[int, float]]:
-    """Return (npxg, xa, xa_open_play, xa_set_piece) by player for the match.
+) -> tuple[
+    dict[int, float],
+    dict[int, float],
+    dict[int, float],
+    dict[int, float],
+    dict[int, float],
+    dict[int, float],
+]:
+    """Return (npxg, xa, xa_open_play, xa_set_piece, npxg_open_play, npxg_set_piece).
 
-    npxG: sum of model xG over a player's non-penalty shots.
-    xA:   sum of model xG of shots arising from a player's key passes
-          (the shot's RelatedEventId pass; that passer is credited).
-    xA is additionally split by whether that key pass was a set-piece delivery;
-    xa_open_play + xa_set_piece == xa for every player.
+    npxG: sum of model xG over a player's non-penalty shots, also split by the
+          shot's situation (open play vs any set-piece origin).
+    xA:   sum of model xG of shots arising from a player's key passes, split by
+          whether that key pass was a set-piece delivery.
+    For every player npxg_open_play + npxg_set_piece == npxg, and
+    xa_open_play + xa_set_piece == xa.
     """
     npxg: dict[int, float] = {}
+    npxg_open: dict[int, float] = {}
+    npxg_sp: dict[int, float] = {}
     xa: dict[int, float] = {}
     xa_open: dict[int, float] = {}
     xa_sp: dict[int, float] = {}
 
-    for ev, xg, assist in iter_shot_xg(events):
+    for ev, xg, situation, assist in iter_shot_xg(events):
         shooter = ev["player_id"]
         npxg[shooter] = npxg.get(shooter, 0.0) + xg
+        shot_bucket = npxg_open if situation == "open" else npxg_sp
+        shot_bucket[shooter] = shot_bucket.get(shooter, 0.0) + xg
 
         if assist is not None and assist.get("player_id") is not None:
             passer = assist["player_id"]
@@ -124,4 +137,4 @@ def compute_xg_xa(
             bucket = xa_sp if _assist_is_set_piece(assist) else xa_open
             bucket[passer] = bucket.get(passer, 0.0) + xg
 
-    return npxg, xa, xa_open, xa_sp
+    return npxg, xa, xa_open, xa_sp, npxg_open, npxg_sp

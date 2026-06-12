@@ -95,7 +95,7 @@ def compute_xg_chain(events: list[dict]) -> tuple[dict[int, float], dict[int, fl
     """Return (xg_chain, xg_buildup) by player for the match."""
     xg_by_id: dict[int, float] = {}
     assister_by_id: dict[int, int | None] = {}
-    for ev, xg, assist in iter_shot_xg(events):
+    for ev, xg, _situation, assist in iter_shot_xg(events):
         xg_by_id[ev["id"]] = xg
         assister_by_id[ev["id"]] = assist["player_id"] if assist else None
 

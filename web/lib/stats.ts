@@ -25,6 +25,8 @@ export const STAT_CATALOG: readonly StatDef[] = [
   // --- attacking / shooting ---
   { key: "npg_p90", label: "Non-Penalty Goals", category: "attacking", format: "per90" },
   { key: "npxg_p90", label: "npxG", category: "attacking", format: "per90" },
+  { key: "npxg_open_play_p90", label: "npxG (Open Play)", category: "attacking", format: "per90" },
+  { key: "npxg_set_piece_p90", label: "npxG (Set Piece)", category: "attacking", format: "per90" },
   { key: "np_g_minus_xg", label: "Goals − npxG", category: "attacking", format: "value" },
   { key: "shots_p90", label: "Shots", category: "attacking", format: "per90" },
   { key: "shots_on_target_pct", label: "Shots on Target %", category: "attacking", format: "percent" },
@@ -113,6 +115,8 @@ export interface TeamStatDef {
 export const TEAM_STAT_CATALOG: readonly TeamStatDef[] = [
   { key: "goals", label: "Goals", category: "attacking" },
   { key: "npxg", label: "npxG", category: "attacking" },
+  { key: "npxg_open_play", label: "npxG (Open Play)", category: "attacking" },
+  { key: "npxg_set_piece", label: "npxG (Set Piece)", category: "attacking" },
   { key: "shots", label: "Shots", category: "attacking" },
   { key: "shots_on_target", label: "Shots on Target", category: "attacking" },
   { key: "goals_long_range", label: "Long-Range Goals", category: "attacking" },

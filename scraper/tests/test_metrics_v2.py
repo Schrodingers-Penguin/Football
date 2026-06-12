@@ -256,11 +256,31 @@ def _shot_with_assist(assist_quals):
 
 
 def test_xa_split_open_vs_set_piece_sums_to_total():
-    npxg, xa, xa_op, xa_sp = compute_xg_xa(_shot_with_assist([]))
+    npxg, xa, xa_op, xa_sp, *_ = compute_xg_xa(_shot_with_assist([]))
     assert xa.get(P, 0) > 0
     assert round(xa_op.get(P, 0), 6) == round(xa.get(P, 0), 6)
     assert xa_sp.get(P, 0) == 0
 
-    npxg, xa, xa_op, xa_sp = compute_xg_xa(_shot_with_assist(["CornerTaken"]))
+    npxg, xa, xa_op, xa_sp, *_ = compute_xg_xa(_shot_with_assist(["CornerTaken"]))
     assert round(xa_sp.get(P, 0), 6) == round(xa.get(P, 0), 6)
     assert xa_op.get(P, 0) == 0
+
+
+def test_npxg_split_open_vs_set_piece_sums_to_total():
+    def shot_ev(quals):
+        return {
+            "player_id": P,
+            "team_id": 9,
+            "event_id": None,
+            "type_name": "MissedShots",
+            "x": 88.0,
+            "y": 50.0,
+            "qualifiers": [{"type": {"displayName": q}, "value": None} for q in quals],
+        }
+
+    # one open-play shot + one from a corner (set-piece origin)
+    npxg, _xa, _xo, _xs, npxg_open, npxg_sp = compute_xg_xa([shot_ev([]), shot_ev(["FromCorner"])])
+    assert npxg[P] > 0
+    assert npxg_open.get(P, 0) > 0  # the open-play shot
+    assert npxg_sp.get(P, 0) > 0  # the corner shot
+    assert round(npxg_open[P] + npxg_sp[P], 6) == round(npxg[P], 6)

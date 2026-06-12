@@ -108,7 +108,14 @@ def aggregate_match(
     max_minute: int = match_data.get("maxMinute") or 90
 
     # xG/xA come from the fitted WhoScored model — computed once for the match.
-    npxg_by_player, xa_by_player, xa_open_by_player, xa_sp_by_player = compute_xg_xa(events)
+    (
+        npxg_by_player,
+        xa_by_player,
+        xa_open_by_player,
+        xa_sp_by_player,
+        npxg_open_by_player,
+        npxg_sp_by_player,
+    ) = compute_xg_xa(events)
     chain_by_player, buildup_by_player = compute_xg_chain(events)
 
     all_players: list[dict] = []
@@ -155,6 +162,8 @@ def aggregate_match(
         npxg_plus_xa = npxg + xa
         xa_open = xa_open_by_player.get(player_id, 0.0)
         xa_sp = xa_sp_by_player.get(player_id, 0.0)
+        npxg_open = npxg_open_by_player.get(player_id, 0.0)
+        npxg_sp = npxg_sp_by_player.get(player_id, 0.0)
 
         row: dict = {
             "match_id": match_id,
@@ -225,6 +234,8 @@ def aggregate_match(
             "errors_leading_to_shot": count_errors_leading_to_shot(events, player_id),
             "xa_open_play": round(xa_open, 4),
             "xa_set_piece": round(xa_sp, 4),
+            "npxg_open_play": round(npxg_open, 4),
+            "npxg_set_piece": round(npxg_sp, 4),
         }
         xtp = xt_pass(events, player_id)
         xtc = xt_carry(events, player_id)
