@@ -17,20 +17,33 @@ function num(v: unknown): number | null {
   return typeof v === "number" ? v : null;
 }
 
-/** Page past Supabase's 1000-row response cap (multi-league queries exceed it). */
+/** Page past Supabase's 1000-row response cap. Pages are fetched in parallel
+ *  batches (sequential pagination over many leagues was ~12 round-trips ≈ 8s). */
 async function fetchAllRows(
   make: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
 ): Promise<Row[]> {
-  const out: Row[] = [];
   const size = 1000;
-  let start = 0;
-  for (;;) {
-    const { data, error } = await make(start, start + size - 1);
+  const batchPages = 8;
+  const page = async (i: number): Promise<Row[]> => {
+    const { data, error } = await make(i * size, i * size + size - 1);
     if (error) throw error;
-    const batch = (data ?? []) as unknown as Row[];
-    out.push(...batch);
-    if (batch.length < size) break;
-    start += size;
+    return (data ?? []) as unknown as Row[];
+  };
+
+  const first = await page(0);
+  if (first.length < size) return first;
+
+  const out = [...first];
+  let base = 1;
+  for (;;) {
+    const batch = await Promise.all(Array.from({ length: batchPages }, (_, i) => page(base + i)));
+    let reachedEnd = false;
+    for (const b of batch) {
+      out.push(...b);
+      if (b.length < size) reachedEnd = true;
+    }
+    if (reachedEnd) break;
+    base += batchPages;
   }
   return out;
 }
@@ -415,16 +428,17 @@ export async function getStatRanking(
   const minMinutes = opts.minMinutes ?? 0;
 
   const pctCol = `${statKey}_pct`;
-  const [data, primary, pctData] = await Promise.all([
+  // Fetch all buckets (with position_minutes) so primary is computed from the
+  // same rows — avoids a second full-table scan.
+  const [data, pctData] = await Promise.all([
     fetchAllRows((from, to) =>
       client
         .from("player_season_stats")
-        .select(`player_id,season_id,position_bucket,minutes,${statKey}`)
+        .select(`player_id,season_id,position_bucket,position_minutes,minutes,${statKey}`)
         .in("season_id", seasonIds)
         .gte("minutes", minMinutes)
         .range(from, to),
     ),
-    primaryBuckets(client, seasonIds),
     fetchAllRows((from, to) =>
       client
         .from("player_season_percentiles")
@@ -438,19 +452,29 @@ export async function getStatRanking(
     pctData.map((r) => [`${r.player_id}:${r.season_id}:${r.position_bucket}`, num(r[pctCol])]),
   );
 
+  const primary = new Map<string, { bucket: string; pm: number }>();
+  for (const r of data) {
+    const key = `${r.player_id}:${r.season_id}`;
+    const pm = (r.position_minutes as number) ?? 0;
+    const cur = primary.get(key);
+    if (!cur || pm > cur.pm) primary.set(key, { bucket: r.position_bucket as string, pm });
+  }
+
   // keep each player's primary-bucket row only (and matching the position filter)
   const kept = data.filter((r) => {
-    const prim = primary.get(`${r.player_id}:${r.season_id}`);
+    const prim = primary.get(`${r.player_id}:${r.season_id}`)?.bucket;
     if (r.position_bucket !== prim) return false;
     if (opts.positionBucket && r.position_bucket !== opts.positionBucket) return false;
     return num(r[statKey]) != null;
   });
 
-  const names = await namesFor(client, kept.map((r) => r.player_id as number));
   const sign = def.lowerIsBetter ? 1 : -1;
   kept.sort((a, b) => sign * ((num(a[statKey]) ?? 0) - (num(b[statKey]) ?? 0)));
 
-  const rows: RankRow[] = kept.slice(0, opts.limit ?? 100).map((r, i) => ({
+  // names only for the rows we return (a 2500-id .in() took ~8s)
+  const top = kept.slice(0, opts.limit ?? 100);
+  const names = await namesFor(client, top.map((r) => r.player_id as number));
+  const rows: RankRow[] = top.map((r, i) => ({
     rank: i + 1,
     playerId: r.player_id as number,
     name: names.get(r.player_id as number) ?? String(r.player_id),
@@ -507,10 +531,11 @@ export async function getCompositeRanking(
     })
     .filter((x): x is { row: Row; score: number } => x.score != null);
 
-  const names = await namesFor(client, scored.map((x) => x.row.player_id as number));
   scored.sort((a, b) => b.score - a.score);
+  const top = scored.slice(0, opts.limit ?? 100);
+  const names = await namesFor(client, top.map((x) => x.row.player_id as number));
 
-  const rows: RankRow[] = scored.slice(0, opts.limit ?? 100).map((x, i) => ({
+  const rows: RankRow[] = top.map((x, i) => ({
     rank: i + 1,
     playerId: x.row.player_id as number,
     name: names.get(x.row.player_id as number) ?? String(x.row.player_id),
@@ -559,20 +584,20 @@ export async function getScatter(
     seasons.map((s) => [s.id as number, s.competition_id as number]),
   );
 
+  // embed the player name via the FK join — avoids a slow giant .in() on names
   const data = await fetchAllRows((from, to) =>
     client
       .from("player_season_stats")
-      .select(`player_id,season_id,minutes,${xKey},${yKey}`)
+      .select(`player_id,season_id,minutes,${xKey},${yKey},players(name)`)
       .in("season_id", Array.from(seasonToComp.keys()))
       .gte("minutes", minMinutes)
       .range(from, to),
   );
 
   const deduped = dedupePlayers(data);
-  const names = await namesFor(client, deduped.map((r) => r.player_id as number));
   const points: ScatterPoint[] = deduped.map((r) => ({
     playerId: r.player_id as number,
-    name: names.get(r.player_id as number) ?? String(r.player_id),
+    name: (r.players as { name?: string } | null)?.name ?? String(r.player_id),
     competitionId: seasonToComp.get(r.season_id as number) ?? 0,
     x: num(r[xKey]),
     y: num(r[yKey]),
