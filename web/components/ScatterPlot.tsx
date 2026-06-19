@@ -4,12 +4,14 @@ import {
   CartesianGrid,
   Label,
   LabelList,
+  ReferenceLine,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 import { COMPETITION_COLOR } from "@/lib/format";
@@ -64,6 +66,13 @@ export function ScatterPlot({
     byComp.get(p.competitionId)!.push(p);
   }
   const highlighted = valid.filter((p) => highlight.has(p.playerId));
+  const median = (arr: number[]) => {
+    if (!arr.length) return 0;
+    const s = [...arr].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+  const medX = median(valid.map((p) => p.x as number));
+  const medY = median(valid.map((p) => p.y as number));
 
   return (
     <ResponsiveContainer width="100%" height={520}>
@@ -75,6 +84,9 @@ export function ScatterPlot({
         <YAxis type="number" dataKey="y" name={yLabel} tick={{ fill: "#888", fontSize: 11 }}>
           <Label value={yLabel} angle={-90} position="left" fill="#999" fontSize={12} />
         </YAxis>
+        <ZAxis type="number" dataKey="minutes" range={[15, 180]} />
+        <ReferenceLine x={medX} stroke="#3f3f46" strokeDasharray="4 4" />
+        <ReferenceLine y={medY} stroke="#3f3f46" strokeDasharray="4 4" />
         <Tooltip content={<Tip />} cursor={{ strokeDasharray: "3 3" }} />
         {Array.from(byComp.entries()).map(([cid, pts]) => (
           <Scatter

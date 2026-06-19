@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 
 import { PercentileBar } from "@/components/PercentileBar";
+import { PlayerPizza } from "@/components/PlayerPizza";
 import { CATEGORY_COLOR, CATEGORY_LABEL, displayPercentile, percentileColor } from "@/lib/format";
 import { COMPOSITES } from "@/lib/composites";
 import { CATEGORY_ORDER, STAT_BY_KEY, type StatCategory } from "@/lib/stats";
@@ -54,10 +55,19 @@ export function ScoutingBars({ report }: { report: ScoutingReport }) {
         </span>
       </div>
 
-      {/* Composite ratings — the headline */}
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
-        <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-3">Composite ratings</h3>
-        <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
+      {/* Headline: pizza + composite ratings */}
+      <div className="grid lg:grid-cols-[340px_1fr] gap-4">
+        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex items-center justify-center">
+          <PlayerPizza
+            stats={pool.stats.map((s) => ({
+              key: s.key,
+              percentile: displayPercentile(s.percentile, STAT_BY_KEY.get(s.key)?.lowerIsBetter),
+            }))}
+          />
+        </section>
+        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+          <h3 className="text-xs uppercase tracking-wider text-neutral-500 mb-3">Composite ratings</h3>
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5">
           {composites.map((c) => {
             const color = percentileColor(c.score);
             return (
@@ -84,8 +94,9 @@ export function ScoutingBars({ report }: { report: ScoutingReport }) {
               </Link>
             );
           })}
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
 
       {/* Stat categories */}
       <div className="grid lg:grid-cols-2 gap-4">

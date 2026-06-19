@@ -3,7 +3,7 @@
  * server components — never in a 'use client' file.
  */
 import { getSupabaseClient } from "@/lib/supabase";
-import { COMPOSITE_BY_KEY } from "@/lib/composites";
+import { COMPOSITE_BY_KEY, COMPOSITES } from "@/lib/composites";
 import { STAT_BY_KEY, STAT_CATALOG, TEAM_STAT_CATALOG } from "@/lib/stats";
 
 function dispPct(pct: number | null, lowerIsBetter?: boolean): number | null {
@@ -585,6 +585,135 @@ export async function getScatter(
     y: { key: yKey, label: yDef.label },
     points,
   };
+}
+
+const ALL_LEAGUES = [2, 3, 4, 5, 13, 21, 22];
+
+export interface SimilarPlayer {
+  playerId: number;
+  name: string;
+  competitionId: number;
+  similarity: number;
+}
+
+/** Players most similar to the target by percentile vector, within the target's
+ *  primary position, across all leagues for the same season. */
+export async function getSimilarPlayers(
+  playerId: number,
+  competitionId: number,
+  seasonLabel: string,
+  limit = 10,
+): Promise<{ positionBucket: string; players: SimilarPlayer[] } | null> {
+  const client = getSupabaseClient();
+  const seasonId = await resolveSeasonId(competitionId, seasonLabel);
+  if (seasonId == null) return null;
+
+  const { data: prows } = await client
+    .from("player_season_stats")
+    .select("position_bucket,position_minutes")
+    .eq("season_id", seasonId)
+    .eq("player_id", playerId);
+  if (!prows || prows.length === 0) return null;
+  const primary = (prows as Row[]).sort(
+    (a, b) => ((b.position_minutes as number) ?? 0) - ((a.position_minutes as number) ?? 0),
+  )[0].position_bucket as string;
+
+  const seasonMap = await resolveSeasonIds(client, ALL_LEAGUES, seasonLabel);
+  const seasonIds = Array.from(seasonMap.keys());
+  const rows = await fetchAllRows((from, to) =>
+    client
+      .from("player_season_percentiles")
+      .select("*")
+      .in("season_id", seasonIds)
+      .eq("position_bucket", primary)
+      .range(from, to),
+  );
+
+  const target = rows.find((r) => r.player_id === playerId && r.season_id === seasonId);
+  if (!target) return { positionBucket: primary, players: [] }; // below threshold: no vector
+
+  const keys = STAT_CATALOG.map((s) => `${s.key}_pct`);
+  const vec = (r: Row) => keys.map((k) => num(r[k]) ?? 50);
+  const tv = vec(target);
+  const maxDist = Math.sqrt(keys.length) * 100;
+
+  const scored = rows
+    .filter((r) => !(r.player_id === playerId && r.season_id === seasonId))
+    .map((r) => {
+      const v = vec(r);
+      let s = 0;
+      for (let i = 0; i < tv.length; i++) s += (tv[i] - v[i]) ** 2;
+      return { r, sim: 100 * (1 - Math.sqrt(s) / maxDist) };
+    })
+    .sort((a, b) => b.sim - a.sim)
+    .slice(0, limit);
+
+  const names = await namesFor(client, scored.map((x) => x.r.player_id as number));
+  return {
+    positionBucket: primary,
+    players: scored.map((x) => ({
+      playerId: x.r.player_id as number,
+      name: names.get(x.r.player_id as number) ?? String(x.r.player_id),
+      competitionId: seasonMap.get(x.r.season_id as number) ?? 0,
+      similarity: Math.round(x.sim * 10) / 10,
+    })),
+  };
+}
+
+export interface TrendPoint {
+  seasonLabel: string;
+  competitionId: number;
+  composites: Record<string, number | null>;
+}
+
+/** A player's composite ratings across the seasons they qualified in (primary
+ *  position each season), for a development trend. */
+export async function getPlayerTrend(playerId: number): Promise<TrendPoint[]> {
+  const client = getSupabaseClient();
+  const { data: ss } = await client
+    .from("player_season_stats")
+    .select("season_id,position_bucket,position_minutes")
+    .eq("player_id", playerId);
+  if (!ss || ss.length === 0) return [];
+
+  const primaryBySeason = new Map<number, { bucket: string; pm: number }>();
+  for (const r of ss as Row[]) {
+    const sid = r.season_id as number;
+    const pm = (r.position_minutes as number) ?? 0;
+    const cur = primaryBySeason.get(sid);
+    if (!cur || pm > cur.pm) primaryBySeason.set(sid, { bucket: r.position_bucket as string, pm });
+  }
+  const seasonIds = Array.from(primaryBySeason.keys());
+
+  const [{ data: view }, { data: seasons }] = await Promise.all([
+    client.from("player_season_percentiles").select("*").eq("player_id", playerId),
+    client.from("seasons").select("id,season_label,competition_id").in("id", seasonIds),
+  ]);
+  const meta = new Map<number, { label: string; comp: number }>(
+    (seasons ?? []).map((s) => [s.id as number, { label: s.season_label as string, comp: s.competition_id as number }]),
+  );
+
+  const points: TrendPoint[] = [];
+  for (const sid of seasonIds) {
+    const bucket = primaryBySeason.get(sid)!.bucket;
+    const row = (view as Row[] | null)?.find(
+      (v) => v.season_id === sid && v.position_bucket === bucket,
+    );
+    if (!row) continue; // below threshold that season
+    const composites: Record<string, number | null> = {};
+    for (const c of COMPOSITES) {
+      const vals = c.members
+        .map((k) => dispPct(num(row[`${k}_pct`]), STAT_BY_KEY.get(k)?.lowerIsBetter))
+        .filter((v): v is number => v != null);
+      composites[c.key] = vals.length
+        ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
+        : null;
+    }
+    const m = meta.get(sid);
+    points.push({ seasonLabel: m?.label ?? String(sid), competitionId: m?.comp ?? 0, composites });
+  }
+  points.sort((a, b) => a.seasonLabel.localeCompare(b.seasonLabel));
+  return points;
 }
 
 export async function getTeamsForSeason(
