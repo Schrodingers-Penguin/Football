@@ -31,3 +31,4 @@ web/.vercel/
 # xG model training cache (regenerate via scraper/scripts/fetch_training_data.py;
 # fitted coefficients live in scraper/src/stats/xg_coefficients.py)
 scraper/xg_training_data.json
+web/.design-shots/

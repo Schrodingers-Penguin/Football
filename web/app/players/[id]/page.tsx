@@ -27,31 +27,42 @@ export default async function PlayerPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold">{seasons.name}</h1>
-        <p className="text-neutral-400">
-          {active.competitionName} · {active.seasonLabel}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-bold tracking-tight">{seasons.name}</h1>
+            {report?.pools[0] && (
+              <span className="rounded-md bg-neutral-800 px-2 py-1 text-sm font-medium text-neutral-300">
+                {report.pools[0].positionBucket}
+              </span>
+            )}
+          </div>
+          <p className="text-neutral-400 mt-1.5">
+            {active.competitionName} · {active.seasonLabel}
+            {report?.pools[0] && (
+              <span className="text-neutral-500"> · {report.pools[0].minutes} min</span>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {seasons.options.map((o) => {
+            const isActive = o === active;
+            return (
+              <Link
+                key={`${o.competitionId}-${o.seasonLabel}`}
+                href={`/players/${playerId}?competition=${o.competitionId}&season=${o.seasonLabel}`}
+                className={`rounded-md px-2.5 py-1 text-xs border transition-colors ${
+                  isActive
+                    ? "border-neutral-500 bg-neutral-800 text-white"
+                    : "border-neutral-800 text-neutral-400 hover:border-neutral-600"
+                }`}
+              >
+                {o.competitionName} {o.seasonLabel}
+              </Link>
+            );
+          })}
+        </div>
       </header>
-
-      <div className="flex flex-wrap gap-2">
-        {seasons.options.map((o) => {
-          const isActive = o === active;
-          return (
-            <Link
-              key={`${o.competitionId}-${o.seasonLabel}`}
-              href={`/players/${playerId}?competition=${o.competitionId}&season=${o.seasonLabel}`}
-              className={`rounded-md px-3 py-1 text-xs border transition-colors ${
-                isActive
-                  ? "border-neutral-500 bg-neutral-800 text-white"
-                  : "border-neutral-800 text-neutral-400 hover:border-neutral-600"
-              }`}
-            >
-              {o.competitionName} {o.seasonLabel}
-            </Link>
-          );
-        })}
-      </div>
 
       {report ? <ScoutingBars report={report} /> : <p className="text-neutral-400">No report.</p>}
     </div>

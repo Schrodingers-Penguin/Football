@@ -26,11 +26,20 @@ export function displayPercentile(pct: number | null, lowerIsBetter?: boolean): 
   return lowerIsBetter ? 100 - pct : pct;
 }
 
-/** Red (low) → amber → green (high) by percentile, for bar fills and dots. */
+/** Red (low) → amber → green (high) by percentile, for bar fills and dots.
+ *  3-stop RGB interpolation — punchier and less muddy than a raw HSL sweep. */
 export function percentileColor(pct: number | null): string {
   if (pct == null) return "#3f3f46"; // neutral grey when unranked
-  const hue = (Math.max(0, Math.min(100, pct)) / 100) * 130; // 0=red, 130=green
-  return `hsl(${hue}, 68%, 45%)`;
+  const p = Math.max(0, Math.min(100, pct)) / 100;
+  const stops: [number, number, number][] = [
+    [225, 65, 75], // red
+    [232, 168, 56], // amber
+    [64, 192, 110], // green
+  ];
+  const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+  const [c0, c1] = p < 0.5 ? [stops[0], stops[1]] : [stops[1], stops[2]];
+  const t = p < 0.5 ? p / 0.5 : (p - 0.5) / 0.5;
+  return `rgb(${lerp(c0[0], c1[0], t)}, ${lerp(c0[1], c1[1], t)}, ${lerp(c0[2], c1[2], t)})`;
 }
 
 /** Distinct colours per competition for scatter plots (by competition id). */
