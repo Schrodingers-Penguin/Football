@@ -3,7 +3,13 @@
  * server components — never in a 'use client' file.
  */
 import { getSupabaseClient } from "@/lib/supabase";
-import { STAT_CATALOG, TEAM_STAT_CATALOG } from "@/lib/stats";
+import { COMPOSITE_BY_KEY } from "@/lib/composites";
+import { STAT_BY_KEY, STAT_CATALOG, TEAM_STAT_CATALOG } from "@/lib/stats";
+
+function dispPct(pct: number | null, lowerIsBetter?: boolean): number | null {
+  if (pct == null) return null;
+  return lowerIsBetter ? 100 - pct : pct;
+}
 
 type Row = Record<string, unknown>;
 
@@ -255,6 +261,210 @@ export async function getLeagueTrends(competitionId: number): Promise<LeagueSeas
       };
     })
     .sort((a, b) => a.seasonLabel.localeCompare(b.seasonLabel));
+}
+
+// ---------------------------------------------------------------------------
+// Rankings (leaderboards) and scatter
+// ---------------------------------------------------------------------------
+
+export interface RankRow {
+  rank: number;
+  playerId: number;
+  name: string;
+  positionBucket: string;
+  minutes: number;
+  value: number | null;
+  percentile: number | null;
+}
+
+export interface RankingResult {
+  kind: "stat" | "composite";
+  key: string;
+  label: string;
+  competitionId: number;
+  seasonLabel: string;
+  rows: RankRow[];
+}
+
+async function namesFor(client: ReturnType<typeof getSupabaseClient>, ids: number[]) {
+  const { data } = await client.from("players").select("id,name").in("id", ids);
+  return new Map<number, string>((data ?? []).map((p) => [p.id as number, p.name as string]));
+}
+
+/** Dedupe hybrid players to one row (per-90 values are identical across their
+ *  buckets) — keep the bucket with the most minutes. */
+function dedupePlayers(rows: Row[]): Row[] {
+  const best = new Map<number, Row>();
+  for (const r of rows) {
+    const pid = r.player_id as number;
+    const cur = best.get(pid);
+    if (!cur || (r.minutes as number) > (cur.minutes as number)) best.set(pid, r);
+  }
+  return Array.from(best.values());
+}
+
+export async function getStatRanking(
+  competitionId: number,
+  seasonLabel: string,
+  statKey: string,
+  opts: { positionBucket?: string; minMinutes?: number; limit?: number } = {},
+): Promise<RankingResult | null> {
+  const def = STAT_BY_KEY.get(statKey);
+  if (!def) return null;
+  const client = getSupabaseClient();
+  const seasonId = await resolveSeasonId(competitionId, seasonLabel);
+  if (seasonId == null) return null;
+  const minMinutes = opts.minMinutes ?? 0;
+
+  let q = client
+    .from("player_season_stats")
+    .select(`player_id,position_bucket,minutes,${statKey}`)
+    .eq("season_id", seasonId)
+    .gte("minutes", minMinutes);
+  if (opts.positionBucket) q = q.eq("position_bucket", opts.positionBucket);
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const pctCol = `${statKey}_pct`;
+  const { data: pctRows } = await client
+    .from("player_season_percentiles")
+    .select(`player_id,position_bucket,${pctCol}`)
+    .eq("season_id", seasonId);
+  const pctMap = new Map<string, number | null>(
+    ((pctRows ?? []) as unknown as Row[]).map((r) => [
+      `${r.player_id}:${r.position_bucket}`,
+      num(r[pctCol]),
+    ]),
+  );
+
+  const rowsRaw = opts.positionBucket ? (data as unknown as Row[]) : dedupePlayers(data as unknown as Row[]);
+  const names = await namesFor(client, rowsRaw.map((r) => r.player_id as number));
+
+  const sign = def.lowerIsBetter ? 1 : -1;
+  const sorted = rowsRaw
+    .filter((r) => num(r[statKey]) != null)
+    .sort((a, b) => sign * ((num(a[statKey]) ?? 0) - (num(b[statKey]) ?? 0)));
+
+  const rows: RankRow[] = sorted.slice(0, opts.limit ?? 100).map((r, i) => ({
+    rank: i + 1,
+    playerId: r.player_id as number,
+    name: names.get(r.player_id as number) ?? String(r.player_id),
+    positionBucket: r.position_bucket as string,
+    minutes: r.minutes as number,
+    value: num(r[statKey]),
+    percentile: pctMap.get(`${r.player_id}:${r.position_bucket}`) ?? null,
+  }));
+
+  return { kind: "stat", key: statKey, label: def.label, competitionId, seasonLabel, rows };
+}
+
+export async function getCompositeRanking(
+  competitionId: number,
+  seasonLabel: string,
+  compositeKey: string,
+  opts: { positionBucket?: string; minMinutes?: number; limit?: number } = {},
+): Promise<RankingResult | null> {
+  const comp = COMPOSITE_BY_KEY.get(compositeKey);
+  if (!comp) return null;
+  const client = getSupabaseClient();
+  const seasonId = await resolveSeasonId(competitionId, seasonLabel);
+  if (seasonId == null) return null;
+  const minMinutes = opts.minMinutes ?? 0;
+
+  // composite is built from percentiles -> read the percentile view (threshold applied)
+  let q = client.from("player_season_percentiles").select("*").eq("season_id", seasonId).gte("minutes", minMinutes);
+  if (opts.positionBucket) q = q.eq("position_bucket", opts.positionBucket);
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const scored = (data as Row[])
+    .map((r) => {
+      const vals: number[] = [];
+      for (const k of comp.members) {
+        const p = dispPct(num(r[`${k}_pct`]), STAT_BY_KEY.get(k)?.lowerIsBetter);
+        if (p != null) vals.push(p);
+      }
+      const score = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      return { row: r, score };
+    })
+    .filter((x) => x.score != null);
+
+  const deduped = dedupePlayers(scored.map((x) => ({ ...x.row, __score: x.score })) as Row[]);
+  const names = await namesFor(client, deduped.map((r) => r.player_id as number));
+  deduped.sort((a, b) => (b.__score as number) - (a.__score as number));
+
+  const rows: RankRow[] = deduped.slice(0, opts.limit ?? 100).map((r, i) => ({
+    rank: i + 1,
+    playerId: r.player_id as number,
+    name: names.get(r.player_id as number) ?? String(r.player_id),
+    positionBucket: r.position_bucket as string,
+    minutes: r.minutes as number,
+    value: Math.round((r.__score as number) * 10) / 10,
+    percentile: Math.round(r.__score as number),
+  }));
+
+  return { kind: "composite", key: compositeKey, label: comp.label, competitionId, seasonLabel, rows };
+}
+
+export interface ScatterPoint {
+  playerId: number;
+  name: string;
+  competitionId: number;
+  x: number | null;
+  y: number | null;
+  minutes: number;
+}
+
+export interface ScatterResult {
+  seasonLabel: string;
+  x: { key: string; label: string };
+  y: { key: string; label: string };
+  points: ScatterPoint[];
+}
+
+export async function getScatter(
+  seasonLabel: string,
+  xKey: string,
+  yKey: string,
+  opts: { minMinutes?: number } = {},
+): Promise<ScatterResult | null> {
+  const xDef = STAT_BY_KEY.get(xKey);
+  const yDef = STAT_BY_KEY.get(yKey);
+  if (!xDef || !yDef) return null;
+  const client = getSupabaseClient();
+  const minMinutes = opts.minMinutes ?? 0;
+
+  // all competitions' seasons sharing this label
+  const { data: seasons } = await client.from("seasons").select("id,competition_id").eq("season_label", seasonLabel);
+  if (!seasons || seasons.length === 0) return null;
+  const seasonToComp = new Map<number, number>(
+    seasons.map((s) => [s.id as number, s.competition_id as number]),
+  );
+
+  const { data, error } = await client
+    .from("player_season_stats")
+    .select(`player_id,season_id,minutes,${xKey},${yKey}`)
+    .in("season_id", Array.from(seasonToComp.keys()))
+    .gte("minutes", minMinutes);
+  if (error) throw error;
+
+  const deduped = dedupePlayers(data as unknown as Row[]);
+  const names = await namesFor(client, deduped.map((r) => r.player_id as number));
+  const points: ScatterPoint[] = deduped.map((r) => ({
+    playerId: r.player_id as number,
+    name: names.get(r.player_id as number) ?? String(r.player_id),
+    competitionId: seasonToComp.get(r.season_id as number) ?? 0,
+    x: num(r[xKey]),
+    y: num(r[yKey]),
+    minutes: r.minutes as number,
+  }));
+
+  return {
+    seasonLabel,
+    x: { key: xKey, label: xDef.label },
+    y: { key: yKey, label: yDef.label },
+    points,
+  };
 }
 
 export async function getTeamsForSeason(

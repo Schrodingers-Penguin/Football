@@ -33,6 +33,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Link href="/compare" className="hover:text-white transition-colors">
             Compare
           </Link>
+          <Link href="/scatter" className="hover:text-white transition-colors">
+            Scatter
+          </Link>
         </nav>
         <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>
       </body>
