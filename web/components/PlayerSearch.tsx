@@ -11,9 +11,11 @@ interface Result {
 export function PlayerSearch({
   onSelect,
   placeholder = "Search players…",
+  compact = false,
 }: {
   onSelect?: (p: Result) => void;
   placeholder?: string;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -45,13 +47,15 @@ export function PlayerSearch({
   };
 
   return (
-    <div className="relative w-full max-w-md">
+    <div className={`relative w-full ${compact ? "" : "max-w-md"}`}>
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => results.length && setOpen(true)}
         placeholder={placeholder}
-        className="w-full rounded-lg bg-neutral-900 border border-neutral-700 px-4 py-2.5 text-sm outline-none focus:border-neutral-500"
+        className={`w-full rounded-lg bg-neutral-900 border border-neutral-700 outline-none focus:border-neutral-500 ${
+          compact ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"
+        }`}
       />
       {open && results.length > 0 && (
         <ul className="absolute z-10 mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl max-h-72 overflow-auto">

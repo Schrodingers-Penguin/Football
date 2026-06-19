@@ -3,6 +3,8 @@ import localFont from "next/font/local";
 import Link from "next/link";
 import "./globals.css";
 
+import { PlayerSearch } from "@/components/PlayerSearch";
+
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -23,7 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}>
-        <nav className="border-b border-neutral-800 px-6 py-3 flex gap-6 text-sm text-neutral-400">
+        <nav className="border-b border-neutral-800 px-6 py-3 flex items-center gap-6 text-sm text-neutral-400">
           <Link href="/" className="hover:text-white transition-colors">
             Players
           </Link>
@@ -36,6 +38,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Link href="/scatter" className="hover:text-white transition-colors">
             Scatter
           </Link>
+          <div className="ml-auto w-64">
+            <PlayerSearch placeholder="Search players…" compact />
+          </div>
         </nav>
         <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>
       </body>

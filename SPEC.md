@@ -212,8 +212,8 @@ WhoScored per-match position code → our bucket:
 | DMC, DML, DMR | DM |
 | MC, ML, MR | CM |
 | AMC | AM |
-| AML, AMR | W |
-| FW (FWL, FWR if present) | CF |
+| AML, AMR, FWL, FWR | W |
+| FW (central) | CF |
 | Sub (no position played) | (excluded — minutes still counted toward team total but no position assignment) |
 
 **Player season position assignment**: minutes-weighted mode across all matches played that season. Tie-break: prefer attacking position (further up the table above). Stored on `player_season_stats.position_bucket`. A player who genuinely splits between two roles will appear in two rows (one per bucket) only if minutes in both are ≥ 25% of total — otherwise the dominant position wins outright.

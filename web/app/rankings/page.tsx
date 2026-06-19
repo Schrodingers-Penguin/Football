@@ -1,18 +1,30 @@
 import Link from "next/link";
 
 import { getCompositeRanking, getStatRanking, type RankingResult } from "@/lib/queries";
-import { formatStat, percentileColor } from "@/lib/format";
+import { COMPETITION_COLOR, formatStat, percentileColor } from "@/lib/format";
 import { STAT_BY_KEY } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
 const MIN_PRESETS = [0, 450, 900, 1350];
+const TOP5 = [2, 3, 4, 5, 22];
+const ALL_LEAGUES = [2, 3, 4, 5, 13, 21, 22];
+const LEAGUES: { id: number; short: string }[] = [
+  { id: 2, short: "PL" },
+  { id: 4, short: "La Liga" },
+  { id: 3, short: "Bundesliga" },
+  { id: 5, short: "Serie A" },
+  { id: 22, short: "Ligue 1" },
+  { id: 13, short: "Eredivisie" },
+  { id: 21, short: "Primeira" },
+];
 
 export default async function RankingsPage({
   searchParams,
 }: {
   searchParams: {
     competition?: string;
+    scope?: string;
     season?: string;
     kind?: string;
     key?: string;
@@ -20,29 +32,33 @@ export default async function RankingsPage({
     minMinutes?: string;
   };
 }) {
-  const competition = Number(searchParams.competition);
+  const competition = searchParams.competition ? Number(searchParams.competition) : undefined;
+  const scope = searchParams.scope === "all" ? "all" : searchParams.scope === "top5" ? "top5" : undefined;
   const season = searchParams.season ?? "";
   const kind = searchParams.kind === "composite" ? "composite" : "stat";
   const key = searchParams.key ?? "";
   const position = searchParams.position;
   const minMinutes = Number(searchParams.minMinutes ?? 600);
 
-  if (!competition || !season || !key) {
+  if ((!competition && !scope) || !season || !key) {
     return <p className="text-neutral-400">Pick a stat from a player&apos;s scouting report.</p>;
   }
 
+  const competitionIds = scope === "all" ? ALL_LEAGUES : scope === "top5" ? TOP5 : [competition!];
   const opts = { positionBucket: position, minMinutes, limit: 100 };
   const result: RankingResult | null =
     kind === "composite"
-      ? await getCompositeRanking(competition, season, key, opts)
-      : await getStatRanking(competition, season, key, opts);
+      ? await getCompositeRanking(competitionIds, season, key, opts)
+      : await getStatRanking(competitionIds, season, key, opts);
 
   if (!result) return <p className="text-neutral-400">No ranking data.</p>;
-
   const def = STAT_BY_KEY.get(key);
-  const baseQ = `competition=${competition}&season=${encodeURIComponent(season)}&kind=${kind}&key=${key}${
+
+  const tail = `&season=${encodeURIComponent(season)}&kind=${kind}&key=${key}${
     position ? `&position=${position}` : ""
-  }`;
+  }&minMinutes=${minMinutes}`;
+  const scopeActive = (s: string) =>
+    s === "top5" ? scope === "top5" : s === "all" ? scope === "all" : !scope && competition === Number(s);
 
   return (
     <div className="space-y-4">
@@ -50,26 +66,50 @@ export default async function RankingsPage({
         <h1 className="text-2xl font-semibold">{result.label}</h1>
         <p className="text-neutral-400 text-sm">
           {season}
-          {position ? ` · ${position}` : " · all positions"} · ranked by{" "}
-          {kind === "composite" ? "composite score" : "value"}
+          {position ? ` · ${position}` : " · all positions"} · {kind === "composite" ? "composite score" : "by value"}
         </p>
       </header>
 
-      <div className="flex items-center gap-2 text-xs text-neutral-500">
-        <span>Min minutes:</span>
-        {MIN_PRESETS.map((m) => (
+      {/* League scope toggle */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <Link
+          href={`/rankings?scope=top5${tail}`}
+          className={`rounded px-2 py-0.5 border ${scopeActive("top5") ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
+        >
+          Top 5
+        </Link>
+        <Link
+          href={`/rankings?scope=all${tail}`}
+          className={`rounded px-2 py-0.5 border ${scopeActive("all") ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
+        >
+          All
+        </Link>
+        <span className="text-neutral-700">|</span>
+        {LEAGUES.map((l) => (
           <Link
-            key={m}
-            href={`/rankings?${baseQ}&minMinutes=${m}`}
-            className={`rounded px-2 py-0.5 border ${
-              m === minMinutes
-                ? "border-neutral-500 bg-neutral-800 text-white"
-                : "border-neutral-800 hover:border-neutral-600"
-            }`}
+            key={l.id}
+            href={`/rankings?competition=${l.id}${tail}`}
+            className={`rounded px-2 py-0.5 border ${scopeActive(String(l.id)) ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
           >
-            {m}
+            {l.short}
           </Link>
         ))}
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-neutral-500">
+        <span>Min minutes:</span>
+        {MIN_PRESETS.map((m) => {
+          const scopeQ = scope ? `scope=${scope}` : `competition=${competition}`;
+          return (
+            <Link
+              key={m}
+              href={`/rankings?${scopeQ}&season=${encodeURIComponent(season)}&kind=${kind}&key=${key}${position ? `&position=${position}` : ""}&minMinutes=${m}`}
+              className={`rounded px-2 py-0.5 border ${m === minMinutes ? "border-neutral-500 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
+            >
+              {m}
+            </Link>
+          );
+        })}
       </div>
 
       <table className="w-full text-sm border-collapse">
@@ -79,9 +119,7 @@ export default async function RankingsPage({
             <th className="font-normal py-1">Player</th>
             <th className="font-normal py-1 w-12">Pos</th>
             <th className="font-normal py-1 w-16 text-right">Min</th>
-            <th className="font-normal py-1 w-20 text-right">
-              {kind === "composite" ? "Score" : "Value"}
-            </th>
+            <th className="font-normal py-1 w-20 text-right">{kind === "composite" ? "Score" : "Value"}</th>
             <th className="font-normal py-1 w-12 text-right">Pct</th>
           </tr>
         </thead>
@@ -90,8 +128,12 @@ export default async function RankingsPage({
             <tr key={`${r.playerId}-${r.positionBucket}`} className="border-t border-neutral-900">
               <td className="py-1 text-neutral-500 tabular-nums">{r.rank}</td>
               <td className="py-1">
+                <span
+                  className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
+                  style={{ backgroundColor: COMPETITION_COLOR[r.competitionId] ?? "#666" }}
+                />
                 <Link
-                  href={`/players/${r.playerId}?competition=${competition}&season=${encodeURIComponent(season)}`}
+                  href={`/players/${r.playerId}?competition=${r.competitionId}&season=${encodeURIComponent(season)}`}
                   className="text-neutral-100 hover:underline"
                 >
                   {r.name}
@@ -100,9 +142,7 @@ export default async function RankingsPage({
               <td className="py-1 text-neutral-500">{r.positionBucket}</td>
               <td className="py-1 text-right tabular-nums text-neutral-400">{r.minutes}</td>
               <td className="py-1 text-right tabular-nums text-neutral-100">
-                {kind === "composite"
-                  ? r.value
-                  : formatStat(r.value, def?.format ?? "value")}
+                {kind === "composite" ? r.value : formatStat(r.value, def?.format ?? "value")}
               </td>
               <td
                 className="py-1 text-right tabular-nums font-medium"

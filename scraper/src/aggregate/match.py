@@ -76,8 +76,8 @@ _POSITION_BUCKET: dict[str, str] = {
     "AML": "W",
     "AMR": "W",
     "FW": "CF",
-    "FWL": "CF",
-    "FWR": "CF",
+    "FWL": "W",  # wide forwards are wingers, not central forwards
+    "FWR": "W",
 }
 
 _SHOT_TYPES = {"Goal", "SavedShot", "MissedShots", "ShotOnPost"}

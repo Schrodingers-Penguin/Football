@@ -50,7 +50,7 @@ export function ScoutingBars({ report }: { report: ScoutingReport }) {
         )}
         <span className="text-sm text-neutral-500">
           Percentile rank vs {pool.positionBucket} · {pool.minutes} min
-          {!pool.qualified && " · below minutes threshold"}
+          {pool.belowThreshold && " · below threshold (ranked vs pool, excluded from it)"}
         </span>
       </div>
 
