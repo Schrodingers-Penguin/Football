@@ -66,4 +66,8 @@ def run_daily(
         return {"finished_seen": len(fixtures), "matches": summary, "rollup": roll}
 
     log(f"daily update for season {season} across {len(jobs)} leagues")
-    return run_matrix(jobs, process_one=process_one, log=log)
+    results = run_matrix(jobs, process_one=process_one, log=log)
+    from .season_rollup import refresh_dashboard_views
+
+    refresh_dashboard_views(client=get_client(), log=log)
+    return results

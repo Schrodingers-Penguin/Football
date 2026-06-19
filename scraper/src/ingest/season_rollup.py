@@ -59,6 +59,19 @@ def rollup_season(season_id: int, *, client=None, log=print) -> dict:
     return summary
 
 
+def refresh_dashboard_views(client=None, log=print) -> None:
+    """Refresh the materialized dashboard views (percentiles, team/league aggregates)
+    after a rollup. Tolerant if the DB function isn't present yet."""
+    from ..db import get_client
+
+    client = client or get_client()
+    try:
+        client.rpc("refresh_dashboard_views").execute()
+        log("refreshed dashboard materialized views")
+    except Exception as e:  # noqa: BLE001 — refresh is best-effort
+        log(f"view refresh skipped ({e})")
+
+
 def rollup_all_seasons(*, client=None, log=print) -> list[dict]:
     """Rollup every season that has at least one row in `seasons`."""
     from ..db import get_client

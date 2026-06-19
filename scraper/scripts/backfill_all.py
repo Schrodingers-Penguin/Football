@@ -102,6 +102,10 @@ def main() -> None:
     banner = f"{len(jobs)} league-seasons to process (CL excluded)"
     print(banner + (" — DRY RUN" if args.dry_run else ""))
     results = run_matrix(jobs, process_one=process_one)
+    if not args.dry_run:
+        from src.ingest.season_rollup import refresh_dashboard_views
+
+        refresh_dashboard_views(get_client())
 
     ok = sum(1 for r in results if r["status"] == "ok")
     failed = [r for r in results if r["status"] == "failed"]

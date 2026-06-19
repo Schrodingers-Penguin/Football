@@ -21,7 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.db import get_client
-from src.ingest.season_rollup import rollup_all_seasons, rollup_season
+from src.ingest.season_rollup import (
+    refresh_dashboard_views,
+    rollup_all_seasons,
+    rollup_season,
+)
 
 
 def main() -> None:
@@ -34,6 +38,7 @@ def main() -> None:
 
     if args.all:
         summaries = rollup_all_seasons()
+        refresh_dashboard_views()
         print(f"\n{summaries}")
         return
 
@@ -54,6 +59,7 @@ def main() -> None:
         season_id = res.data[0]["id"]
 
     summary = rollup_season(season_id)
+    refresh_dashboard_views()
     print(f"\n{summary}")
 
 

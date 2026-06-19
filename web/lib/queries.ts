@@ -686,7 +686,13 @@ export async function getPlayerTrend(playerId: number): Promise<TrendPoint[]> {
   const seasonIds = Array.from(primaryBySeason.keys());
 
   const [{ data: view }, { data: seasons }] = await Promise.all([
-    client.from("player_season_percentiles").select("*").eq("player_id", playerId),
+    // filter on season_id (a partition key) so Postgres prunes partitions —
+    // a player_id-only filter recomputes every PERCENT_RANK window (~4s).
+    client
+      .from("player_season_percentiles")
+      .select("*")
+      .in("season_id", seasonIds)
+      .eq("player_id", playerId),
     client.from("seasons").select("id,season_label,competition_id").in("id", seasonIds),
   ]);
   const meta = new Map<number, { label: string; comp: number }>(

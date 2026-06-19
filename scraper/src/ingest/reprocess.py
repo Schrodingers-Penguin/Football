@@ -133,7 +133,7 @@ def reprocess_all(
 ) -> dict:
     """Production wiring: read stored JSONs, re-aggregate, upsert, re-roll-up."""
     from ..db import get_client
-    from .season_rollup import rollup_season
+    from .season_rollup import refresh_dashboard_views, rollup_season
 
     client = client or get_client()
 
@@ -147,9 +147,12 @@ def reprocess_all(
         for sid in season_ids:
             rollup_season(sid, client=client, log=log)
 
-    return run_reprocess(
+    result = run_reprocess(
         items,
         process_one=lambda item: reprocess_match(item, client=client),
         rollup_seasons=rollup_seasons,
         log=log,
     )
+    if rollup:
+        refresh_dashboard_views(client=client, log=log)
+    return result
