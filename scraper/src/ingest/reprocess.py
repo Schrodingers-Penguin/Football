@@ -79,7 +79,7 @@ def iter_stored_matches(
             q = q.eq("competition_id", competition_id)
         if season_id is not None:
             q = q.eq("season_id", season_id)
-        page = q.range(start, start + page_size - 1).execute().data
+        page = q.order("id").range(start, start + page_size - 1).execute().data
         if not page:
             return
         for m in page:

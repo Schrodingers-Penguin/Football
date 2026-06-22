@@ -401,6 +401,7 @@ async function primaryBuckets(
       .from("player_season_stats")
       .select("player_id,season_id,position_bucket,position_minutes")
       .in("season_id", seasonIds)
+      .order("id")
       .range(from, to),
   );
   const best = new Map<string, { bucket: string; pm: number }>();
@@ -437,6 +438,7 @@ export async function getStatRanking(
         .select(`player_id,season_id,position_bucket,position_minutes,minutes,${statKey}`)
         .in("season_id", seasonIds)
         .gte("minutes", minMinutes)
+        .order("id")
         .range(from, to),
     ),
     fetchAllRows((from, to) =>
@@ -444,6 +446,9 @@ export async function getStatRanking(
         .from("player_season_percentiles")
         .select(`player_id,season_id,position_bucket,${pctCol}`)
         .in("season_id", seasonIds)
+        .order("season_id")
+        .order("player_id")
+        .order("position_bucket")
         .range(from, to),
     ),
   ]);
@@ -509,6 +514,9 @@ export async function getCompositeRanking(
         .select("*")
         .in("season_id", seasonIds)
         .gte("minutes", minMinutes)
+        .order("season_id")
+        .order("player_id")
+        .order("position_bucket")
         .range(from, to),
     ),
     primaryBuckets(client, seasonIds),
@@ -591,6 +599,7 @@ export async function getScatter(
       .select(`player_id,season_id,minutes,${xKey},${yKey},players(name)`)
       .in("season_id", Array.from(seasonToComp.keys()))
       .gte("minutes", minMinutes)
+      .order("id")
       .range(from, to),
   );
 
@@ -651,6 +660,9 @@ export async function getSimilarPlayers(
       .select("*")
       .in("season_id", seasonIds)
       .eq("position_bucket", primary)
+      .order("season_id")
+      .order("player_id")
+      .order("position_bucket")
       .range(from, to),
   );
 

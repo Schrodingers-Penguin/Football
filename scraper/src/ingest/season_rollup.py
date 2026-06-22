@@ -29,6 +29,7 @@ def _fetch_season_match_stats(client, season_id: int) -> list[dict]:
             client.table("player_match_stats")
             .select("*, matches!inner(season_id)")
             .eq("matches.season_id", season_id)
+            .order("id")  # stable order — paginating without it drops/dupes rows
             .range(start, start + _PAGE - 1)
             .execute()
         )
