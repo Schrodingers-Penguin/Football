@@ -7,6 +7,7 @@ import { STAT_BY_KEY } from "@/lib/stats";
 export const dynamic = "force-dynamic";
 
 const MIN_PRESETS = [0, 450, 900, 1350];
+const POSITIONS = ["GK", "CB", "FB", "DM", "CM", "AM", "W", "CF"];
 const TOP5 = [2, 3, 4, 5, 22];
 const ALL_LEAGUES = [2, 3, 4, 5, 13, 21, 22];
 const LEAGUES: { id: number; short: string }[] = [
@@ -57,6 +58,9 @@ export default async function RankingsPage({
   const tail = `&season=${encodeURIComponent(season)}&kind=${kind}&key=${key}${
     position ? `&position=${position}` : ""
   }&minMinutes=${minMinutes}`;
+  const scopeQ = scope ? `scope=${scope}` : `competition=${competition}`;
+  // base query (current league + stat + minutes) without a position, for the position toggle
+  const posBase = `${scopeQ}&season=${encodeURIComponent(season)}&kind=${kind}&key=${key}&minMinutes=${minMinutes}`;
   const scopeActive = (s: string) =>
     s === "top5" ? scope === "top5" : s === "all" ? scope === "all" : !scope && competition === Number(s);
 
@@ -92,6 +96,26 @@ export default async function RankingsPage({
             className={`rounded px-2 py-0.5 border ${scopeActive(String(l.id)) ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
           >
             {l.short}
+          </Link>
+        ))}
+      </div>
+
+      {/* Position toggle */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-neutral-500">Position:</span>
+        <Link
+          href={`/rankings?${posBase}`}
+          className={`rounded px-2 py-0.5 border ${!position ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
+        >
+          All
+        </Link>
+        {POSITIONS.map((p) => (
+          <Link
+            key={p}
+            href={`/rankings?${posBase}&position=${p}`}
+            className={`rounded px-2 py-0.5 border ${position === p ? "border-neutral-400 bg-neutral-800 text-white" : "border-neutral-800 hover:border-neutral-600"}`}
+          >
+            {p}
           </Link>
         ))}
       </div>

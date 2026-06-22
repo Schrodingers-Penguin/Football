@@ -92,14 +92,19 @@ export interface ScoutingReport {
 
 export async function searchPlayers(q: string, limit = 20): Promise<PlayerSearchResult[]> {
   const client = getSupabaseClient();
-  const { data, error } = await client
+  // accent-insensitive via the unaccent RPC ("Odegaard" -> "Ødegaard")
+  const { data, error } = await client.rpc("search_players", { q, lim: limit });
+  if (!error && data) {
+    return (data as Row[]).map((r) => ({ id: r.id as number, name: r.name as string }));
+  }
+  // fallback if the migration isn't applied yet (accent-sensitive)
+  const { data: d2 } = await client
     .from("players")
     .select("id,name")
     .ilike("name", `%${q}%`)
     .order("name")
     .limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((r) => ({ id: r.id as number, name: r.name as string }));
+  return (d2 ?? []).map((r) => ({ id: r.id as number, name: r.name as string }));
 }
 
 export interface PlayerSeasonOption {
