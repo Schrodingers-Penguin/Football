@@ -32,6 +32,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Link href="/leagues" className="hover:text-white transition-colors">
             Leagues
           </Link>
+          <Link href="/traits" className="hover:text-white transition-colors">
+            Traits
+          </Link>
           <Link href="/compare" className="hover:text-white transition-colors">
             Compare
           </Link>

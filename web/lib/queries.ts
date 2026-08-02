@@ -4,7 +4,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase";
 import { COMPOSITE_BY_KEY, COMPOSITES } from "@/lib/composites";
-import { STAT_BY_KEY, STAT_CATALOG, TEAM_STAT_CATALOG } from "@/lib/stats";
+import { STAT_BY_KEY, STAT_CATALOG, TEAM_STAT_CATALOG, type StatDef } from "@/lib/stats";
 
 function dispPct(pct: number | null, lowerIsBetter?: boolean): number | null {
   if (pct == null) return null;
@@ -560,6 +560,145 @@ export async function getCompositeRanking(
   }));
 
   return { kind: "composite", key: compositeKey, label: comp.label, seasonLabel, rows };
+}
+
+export interface ExplorerRow {
+  playerId: number;
+  name: string;
+  competitionId: number;
+  positionBucket: string;
+  minutes: number;
+  /** raw value per selected stat key */
+  values: Record<string, number | null>;
+  /** display percentile per selected stat key (lowerIsBetter already inverted) */
+  percentiles: Record<string, number | null>;
+}
+
+export interface ExplorerResult {
+  seasonLabel: string;
+  statKeys: string[];
+  rows: ExplorerRow[];
+  /** rows matching the filters before `limit` was applied */
+  matched: number;
+}
+
+/**
+ * Multi-stat player table: any subset of the catalogue as columns, filtered by
+ * league scope / position / minutes / per-stat minimums, sorted by any column.
+ *
+ * Same pool semantics as the rankings: one row per player, their primary bucket
+ * (most position-minutes), so a hybrid isn't listed twice.
+ */
+export async function getPlayerExplorer(
+  competitionIds: number[],
+  seasonLabel: string,
+  statKeys: string[],
+  opts: {
+    positionBucket?: string;
+    minMinutes?: number;
+    /** stat key, or "minutes" */
+    sortKey?: string;
+    sortDir?: "asc" | "desc";
+    /** stat key -> minimum raw value */
+    minValues?: Record<string, number>;
+    limit?: number;
+  } = {},
+): Promise<ExplorerResult | null> {
+  // only known keys reach the select string
+  const defs = statKeys.map((k) => STAT_BY_KEY.get(k)).filter((d): d is StatDef => !!d);
+  const keys = defs.map((d) => d.key);
+  const client = getSupabaseClient();
+  const seasonMap = await resolveSeasonIds(client, competitionIds, seasonLabel);
+  if (seasonMap.size === 0) return null;
+  const seasonIds = Array.from(seasonMap.keys());
+  const minMinutes = opts.minMinutes ?? 0;
+
+  const statCols = keys.length ? `,${keys.join(",")}` : "";
+  const pctCols = keys.length ? `,${keys.map((k) => `${k}_pct`).join(",")}` : "";
+
+  const [data, pctData] = await Promise.all([
+    fetchAllRows((from, to) =>
+      client
+        .from("player_season_stats")
+        .select(`player_id,season_id,position_bucket,position_minutes,minutes${statCols}`)
+        .in("season_id", seasonIds)
+        .gte("minutes", minMinutes)
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAllRows((from, to) =>
+      client
+        .from("player_season_percentiles")
+        .select(`player_id,season_id,position_bucket${pctCols}`)
+        .in("season_id", seasonIds)
+        .order("season_id")
+        .order("player_id")
+        .order("position_bucket")
+        .range(from, to),
+    ),
+  ]);
+
+  const pctMap = new Map<string, Row>(
+    pctData.map((r) => [`${r.player_id}:${r.season_id}:${r.position_bucket}`, r]),
+  );
+
+  // primary bucket from the same rows — avoids a second full-table scan
+  const primary = new Map<string, { bucket: string; pm: number }>();
+  for (const r of data) {
+    const k = `${r.player_id}:${r.season_id}`;
+    const pm = (r.position_minutes as number) ?? 0;
+    const cur = primary.get(k);
+    if (!cur || pm > cur.pm) primary.set(k, { bucket: r.position_bucket as string, pm });
+  }
+
+  const minValues = opts.minValues ?? {};
+  const kept = data.filter((r) => {
+    if (r.position_bucket !== primary.get(`${r.player_id}:${r.season_id}`)?.bucket) return false;
+    if (opts.positionBucket && r.position_bucket !== opts.positionBucket) return false;
+    for (const [k, min] of Object.entries(minValues)) {
+      const v = num(r[k]);
+      if (v == null || v < min) return false;
+    }
+    return true;
+  });
+
+  const sortKey = opts.sortKey ?? keys[0] ?? "minutes";
+  const sortDef = STAT_BY_KEY.get(sortKey);
+  // default to best-first: ascending for lower-is-better stats, descending otherwise
+  const dir = opts.sortDir ?? (sortDef?.lowerIsBetter ? "asc" : "desc");
+  const sign = dir === "asc" ? 1 : -1;
+  kept.sort((a, b) => {
+    const av = num(a[sortKey]);
+    const bv = num(b[sortKey]);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1; // nulls last, either direction
+    if (bv == null) return -1;
+    return sign * (av - bv);
+  });
+
+  const top = kept.slice(0, opts.limit ?? 100);
+  const names = await namesFor(client, top.map((r) => r.player_id as number));
+
+  const rows: ExplorerRow[] = top.map((r) => {
+    const pct = pctMap.get(`${r.player_id}:${r.season_id}:${r.position_bucket}`);
+    const values: Record<string, number | null> = {};
+    const percentiles: Record<string, number | null> = {};
+    for (const d of defs) {
+      values[d.key] = num(r[d.key]);
+      percentiles[d.key] = dispPct(pct ? num(pct[`${d.key}_pct`]) : null, d.lowerIsBetter);
+    }
+    return {
+      playerId: r.player_id as number,
+      name: names.get(r.player_id as number) ?? String(r.player_id),
+      competitionId: seasonMap.get(r.season_id as number) ?? 0,
+      positionBucket: r.position_bucket as string,
+      minutes: r.minutes as number,
+      values,
+      percentiles,
+    };
+  });
+
+  return { seasonLabel, statKeys: keys, rows, matched: kept.length };
 }
 
 export interface ScatterPoint {
