@@ -219,7 +219,13 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
               </thead>
               <tbody>
                 {result.rows.map((r, i) => (
-                  <tr key={`${r.playerId}-${r.positionBucket}`} className="border-t border-neutral-900">
+                  // competition is part of the key: a mid-season transfer gives
+                  // one player two rows with the same bucket, and duplicate keys
+                  // make React strand a stale row when the sort changes
+                  <tr
+                    key={`${r.playerId}-${r.competitionId}-${r.positionBucket}`}
+                    className="border-t border-neutral-900"
+                  >
                     <td className="py-1 text-neutral-500 tabular-nums">{i + 1}</td>
                     <td className="py-1">
                       <span

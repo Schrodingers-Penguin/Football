@@ -149,7 +149,13 @@ export default async function RankingsPage({
         </thead>
         <tbody>
           {result.rows.map((r) => (
-            <tr key={`${r.playerId}-${r.positionBucket}`} className="border-t border-neutral-900">
+            // competition is part of the key: a mid-season transfer gives one
+            // player two rows with the same bucket, and duplicate keys make
+            // React strand a stale row when the ranking changes
+            <tr
+              key={`${r.playerId}-${r.competitionId}-${r.positionBucket}`}
+              className="border-t border-neutral-900"
+            >
               <td className="py-1 text-neutral-500 tabular-nums">{r.rank}</td>
               <td className="py-1">
                 <span
