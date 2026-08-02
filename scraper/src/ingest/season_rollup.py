@@ -2,8 +2,10 @@
 
 Reads every match-stat row for a season, aggregates per player (per-90s,
 percentages, dominant position), and upserts the season rows. Idempotent:
-re-running recomputes from scratch and overwrites on the
-(season_id, player_id, position_bucket) unique key.
+re-running recomputes from scratch, overwrites on the
+(season_id, player_id, position_bucket) unique key, and prunes bucket rows the
+rollup no longer emits — the upsert alone cannot remove those, so without the
+prune a player's dropped bucket keeps stale season totals indefinitely.
 
 Separate from per-match ingest by design — a season row depends on *all* of a
 player's matches, so it is recomputed in bulk after backfill (and by the daily
@@ -50,13 +52,18 @@ def rollup_season(season_id: int, *, client=None, log=print) -> dict:
     match_stats = _fetch_season_match_stats(client, season_id)
     rows = build_player_season_rows(match_stats, season_id=season_id)
     writers.upsert_player_season_stats(client, rows)
+    pruned = writers.prune_player_season_stats(client, season_id, rows)
 
     summary = {
         "season_id": season_id,
         "match_stat_rows": len(match_stats),
         "player_season_rows": len(rows),
+        "pruned_rows": pruned,
     }
-    log(f"season {season_id}: {len(rows)} players from {len(match_stats)} match-stat rows")
+    log(
+        f"season {season_id}: {len(rows)} players from {len(match_stats)} match-stat rows"
+        + (f" ({pruned} stale bucket rows pruned)" if pruned else "")
+    )
     return summary
 
 
