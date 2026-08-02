@@ -562,12 +562,48 @@ export async function getCompositeRanking(
   return { kind: "composite", key: compositeKey, label: comp.label, seasonLabel, rows };
 }
 
+export interface PlayerAge {
+  age: number;
+  asOf: string;
+}
+
+/**
+ * player_id -> age, for the age filter. WhoScored reports age at scrape time, so
+ * this is exact on `asOf` and drifts afterwards (see the player_age migration).
+ *
+ * Returns an empty map if the columns aren't there yet, so the explorer keeps
+ * working (unfiltered by age) before the migration is applied.
+ */
+export async function getPlayerAges(): Promise<Map<number, PlayerAge>> {
+  const client = getSupabaseClient();
+  try {
+    const rows = await fetchAllRows((from, to) =>
+      client
+        .from("players")
+        .select("id,age,age_as_of")
+        .not("age", "is", null)
+        .order("id")
+        .range(from, to),
+    );
+    return new Map(
+      rows.map((r) => [
+        r.id as number,
+        { age: r.age as number, asOf: (r.age_as_of as string) ?? "" },
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 export interface ExplorerRow {
   playerId: number;
   name: string;
   competitionId: number;
   positionBucket: string;
   minutes: number;
+  /** null when age hasn't been backfilled for this player */
+  age: number | null;
   /** raw value per selected stat key */
   values: Record<string, number | null>;
   /** display percentile per selected stat key (lowerIsBetter already inverted) */
@@ -601,6 +637,8 @@ export async function getPlayerExplorer(
     sortDir?: "asc" | "desc";
     /** stat key -> minimum raw value */
     minValues?: Record<string, number>;
+    minAge?: number;
+    maxAge?: number;
     limit?: number;
   } = {},
 ): Promise<ExplorerResult | null> {
@@ -616,7 +654,8 @@ export async function getPlayerExplorer(
   const statCols = keys.length ? `,${keys.join(",")}` : "";
   const pctCols = keys.length ? `,${keys.map((k) => `${k}_pct`).join(",")}` : "";
 
-  const [data, pctData] = await Promise.all([
+  const wantsAge = opts.minAge != null || opts.maxAge != null;
+  const [data, pctData, ages] = await Promise.all([
     fetchAllRows((from, to) =>
       client
         .from("player_season_stats")
@@ -636,6 +675,9 @@ export async function getPlayerExplorer(
         .order("position_bucket")
         .range(from, to),
     ),
+    // needed for the whole pool, not just the returned page — the age filter
+    // runs before the limit
+    getPlayerAges(),
   ]);
 
   const pctMap = new Map<string, Row>(
@@ -658,6 +700,14 @@ export async function getPlayerExplorer(
     for (const [k, min] of Object.entries(minValues)) {
       const v = num(r[k]);
       if (v == null || v < min) return false;
+    }
+    if (wantsAge) {
+      // players without a known age are excluded rather than silently kept —
+      // an age filter that returns unaged players is misleading
+      const a = ages.get(r.player_id as number)?.age;
+      if (a == null) return false;
+      if (opts.minAge != null && a < opts.minAge) return false;
+      if (opts.maxAge != null && a > opts.maxAge) return false;
     }
     return true;
   });
@@ -693,6 +743,7 @@ export async function getPlayerExplorer(
       competitionId: seasonMap.get(r.season_id as number) ?? 0,
       positionBucket: r.position_bucket as string,
       minutes: r.minutes as number,
+      age: ages.get(r.player_id as number)?.age ?? null,
       values,
       percentiles,
     };

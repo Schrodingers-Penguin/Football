@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AgeFilter } from "@/components/AgeFilter";
 import { StatMinInput } from "@/components/StatMinInput";
 import { StatPicker } from "@/components/StatPicker";
 import { COMPETITION_COLOR, formatStat, percentileColor } from "@/lib/format";
@@ -69,6 +70,11 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
     if (raw != null && raw !== "" && !Number.isNaN(Number(raw))) minValues[k] = Number(raw);
   }
 
+  const numParam = (v: string | undefined) =>
+    v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : undefined;
+  const minAge = numParam(searchParams.minAge);
+  const maxAge = numParam(searchParams.maxAge);
+
   const sortKey = searchParams.sort && STAT_BY_KEY.has(searchParams.sort) ? searchParams.sort : undefined;
   const sortDir = searchParams.dir === "asc" ? "asc" : searchParams.dir === "desc" ? "desc" : undefined;
 
@@ -79,6 +85,8 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
         sortKey,
         sortDir,
         minValues,
+        minAge,
+        maxAge,
         limit: 100,
       })
     : null;
@@ -156,6 +164,8 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
         ))}
       </div>
 
+      <AgeFilter min={searchParams.minAge} max={searchParams.maxAge} />
+
       <StatPicker selected={statKeys} />
 
       {!statKeys.length ? (
@@ -175,6 +185,7 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
                   <th className="font-normal py-1 w-8">#</th>
                   <th className="font-normal py-1 min-w-40">Player</th>
                   <th className="font-normal py-1 w-12">Pos</th>
+                  <th className="font-normal py-1 w-12 text-right">Age</th>
                   <th className="font-normal py-1 w-16 text-right">Min</th>
                   {statKeys.map((k) => {
                     const def = STAT_BY_KEY.get(k)!;
@@ -216,6 +227,7 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
                       </Link>
                     </td>
                     <td className="py-1 text-neutral-500">{r.positionBucket}</td>
+                    <td className="py-1 text-right tabular-nums text-neutral-400">{r.age ?? "—"}</td>
                     <td className="py-1 text-right tabular-nums text-neutral-400">{r.minutes}</td>
                     {statKeys.map((k) => (
                       <td key={k} className="py-1 px-2 text-right tabular-nums whitespace-nowrap">
