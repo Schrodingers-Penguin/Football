@@ -102,16 +102,19 @@ def main() -> None:
     banner = f"{len(jobs)} league-seasons to process (CL excluded)"
     print(banner + (" — DRY RUN" if args.dry_run else ""))
     results = run_matrix(jobs, process_one=process_one)
-    if not args.dry_run:
-        from src.ingest.season_rollup import refresh_dashboard_views
-
-        refresh_dashboard_views(get_client())
 
     ok = sum(1 for r in results if r["status"] == "ok")
     failed = [r for r in results if r["status"] == "failed"]
     print(f"\n=== matrix complete: {ok}/{len(results)} ok, {len(failed)} failed ===")
     for r in failed:
         print(f"  FAILED comp {r['job'].competition_id} {r['job'].season_label}: {r['error']}")
+
+    # After the summary: a stale-view failure raises, and a multi-day run's
+    # report is worth more than the traceback's position in the output.
+    if not args.dry_run:
+        from src.ingest.season_rollup import refresh_dashboard_views
+
+        refresh_dashboard_views(get_client())
 
 
 if __name__ == "__main__":

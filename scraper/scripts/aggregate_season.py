@@ -38,8 +38,8 @@ def main() -> None:
 
     if args.all:
         summaries = rollup_all_seasons()
-        refresh_dashboard_views()
         print(f"\n{summaries}")
+        refresh_dashboard_views()  # after the summary — this raises if a view is stale
         return
 
     season_id = args.season_id

@@ -68,16 +68,19 @@ EXPECTATIONS: tuple[Expectation, ...] = (
         "league_season_stats materialized view",
         _cols("league_season_stats", "season_id"),
     ),
+    # No probe for 20260622000000_fix_refresh: 20260802010000 supersedes it, and
+    # the thing it probed for (a 600s statement_timeout set inside the function)
+    # turned out never to have worked. Probing 20260802010000 covers both.
     Expectation(
-        "20260622000000_fix_refresh",
-        "refresh_dashboard_views() with a long statement_timeout",
-        # NOTE: this probe has a side effect — it actually refreshes the three
-        # materialized views (~13s). That's the only way to tell the fixed
-        # function from the broken one through PostgREST, which can't read
-        # pg_proc: the pre-fix version dies on the role's 8s cap, this one is
-        # allowed 600s. The refresh is idempotent and the daily job does it
-        # anyway, so the cost is a duplicated refresh once per run.
-        lambda c: c.rpc("refresh_dashboard_views").execute(),
+        "20260802010000_split_refresh",
+        "per-view refresh RPCs",
+        # NOTE: this probe has a side effect — it really does refresh the
+        # percentiles view. PostgREST can't read pg_proc, so calling the
+        # function is the only way to prove it exists. The percentiles view is
+        # the cheapest of the three (~12k rows of window functions, vs 200k+ row
+        # aggregates for the other two) and the refresh is idempotent, so the
+        # cost is one duplicated cheap refresh per run.
+        lambda c: c.rpc("refresh_player_season_percentiles").execute(),
     ),
     Expectation(
         "20260622010000_unaccent_search",
@@ -88,6 +91,13 @@ EXPECTATIONS: tuple[Expectation, ...] = (
         "20260802000000_player_age",
         "players.age / players.age_as_of",
         _cols("players", "age,age_as_of"),
+    ),
+    Expectation(
+        "20260802020000_percentile_config_for_new_seasons",
+        "default_minutes_threshold() + percentile_config seeding trigger",
+        # The trigger itself isn't visible through PostgREST; its helper function
+        # is, and they ship in the same migration. Read-only and instant.
+        lambda c: c.rpc("default_minutes_threshold", {"p_competition_id": 2}).execute(),
     ),
 )
 
