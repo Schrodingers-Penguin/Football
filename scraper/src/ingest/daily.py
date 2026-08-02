@@ -37,11 +37,17 @@ def run_daily(
     log: Callable[[str], None] = print,
 ) -> list[dict]:
     from ..db import get_client
+    from ..schema_check import assert_schema
     from ..whoscored.competitions import COMPETITION_REGIONS, discover_season_fixtures_url
     from ..whoscored.fixtures import discover_finished_fixtures
     from .backfill import backfill
     from .season_rollup import rollup_season
     from .writers import get_or_create_season
+
+    # Fail before scraping anything: migrations are applied by hand, and a
+    # skipped one degrades silently (see src/schema_check.py). Cheap, and the
+    # cron is the one place drift reliably gets noticed.
+    assert_schema(log=log)
 
     season = season_label or current_season_label()
     jobs = build_jobs(sorted(COMPETITION_REGIONS), [season])
