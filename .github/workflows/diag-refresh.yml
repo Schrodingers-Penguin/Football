@@ -30,7 +30,8 @@ jobs:
               print("jwt role claim:", claims.get("role"), "| iss:", claims.get("iss"))
           except Exception as e:
               print("not a decodable JWT (new-style publishable/secret key?):", type(e).__name__)
-              print("key prefix:", key.split("_")[0] if "_" in key else "<opaque>")
+              # key *type* only (sb_secret / sb_publishable) — not the key material
+              print("key type:", "_".join(key.split("_")[:2]))
           from src.db import get_client
           c = get_client()
           t0 = time.time()
