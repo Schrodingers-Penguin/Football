@@ -164,7 +164,14 @@ export default async function TraitsPage({ searchParams }: { searchParams: Param
         ))}
       </div>
 
-      <AgeFilter min={searchParams.minAge} max={searchParams.maxAge} />
+      <div className="space-y-1">
+        <AgeFilter min={searchParams.minAge} max={searchParams.maxAge} />
+        {result?.ageAsOf && (
+          // WhoScored only reports age at scrape time, so this is a snapshot, not
+          // a live age — say so rather than let a stale year pass as current
+          <p className="text-[11px] text-neutral-600">Ages as of {result.ageAsOf}</p>
+        )}
+      </div>
 
       <StatPicker selected={statKeys} />
 

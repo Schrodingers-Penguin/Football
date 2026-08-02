@@ -616,6 +616,8 @@ export interface ExplorerResult {
   rows: ExplorerRow[];
   /** rows matching the filters before `limit` was applied */
   matched: number;
+  /** newest age observation date, so the UI can date the Age column */
+  ageAsOf: string | null;
 }
 
 /**
@@ -749,7 +751,12 @@ export async function getPlayerExplorer(
     };
   });
 
-  return { seasonLabel, statKeys: keys, rows, matched: kept.length };
+  let ageAsOf: string | null = null;
+  ages.forEach((a) => {
+    if (a.asOf && (!ageAsOf || a.asOf > ageAsOf)) ageAsOf = a.asOf;
+  });
+
+  return { seasonLabel, statKeys: keys, rows, matched: kept.length, ageAsOf };
 }
 
 export interface ScatterPoint {

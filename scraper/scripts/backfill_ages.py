@@ -86,15 +86,45 @@ def extract(out_path: Path, log=print) -> dict:
     return obs
 
 
+def _existing_names(client) -> dict[int, str]:
+    """id -> name for every player already in the table."""
+    out: dict[int, str] = {}
+    start = 0
+    while True:
+        res = (
+            client.table("players")
+            .select("id,name")
+            .order("id")
+            .range(start, start + _PAGE - 1)
+            .execute()
+        )
+        batch = res.data or []
+        out.update({r["id"]: r["name"] for r in batch})
+        if len(batch) < _PAGE:
+            break
+        start += _PAGE
+    return out
+
+
 def load(out_path: Path, log=print) -> None:
     client = get_client()
     obs = json.loads(out_path.read_text())
     rows, stats = resolve_ages(obs)
     log(f"{len(rows)} players resolved ({dict(stats)})")
 
-    for i in range(0, len(rows), 500):
-        client.table("players").upsert(rows[i : i + 500]).execute()
-    log(f"wrote age for {len(rows)} players")
+    # upsert sends an INSERT tuple, and players.name is NOT NULL — so the
+    # current name has to ride along or the write is rejected. It's the value
+    # already stored, so this is a no-op for the name column.
+    names = _existing_names(client)
+    payload = [{**r, "name": names[r["id"]]} for r in rows if r["id"] in names]
+    skipped = len(rows) - len(payload)
+
+    for i in range(0, len(payload), 500):
+        client.table("players").upsert(payload[i : i + 500]).execute()
+    log(
+        f"wrote age for {len(payload)} players"
+        + (f" ({skipped} unknown ids skipped)" if skipped else "")
+    )
 
 
 def main() -> None:
